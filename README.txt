@@ -1,15 +1,21 @@
-FACETED TUBE MAKER — SAFARI VERSION
+FACETED TUBE MAKER — SAFARI QUAD VERSION
 
 This is a static web app. It does not require npm, Node.js or a command line.
 
-EASIEST IPAD DEPLOYMENT
-1. Unzip this folder in the iPad Files app.
-2. Upload the contents to any static website host, such as Netlify Drop, Cloudflare Pages, GitHub Pages or Vercel.
-3. Open the HTTPS address in Safari.
-4. Tap Share > Add to Home Screen.
-5. Open the new Tube Maker icon.
+NEW QUAD MODES
+- Original OBJ quads: preserves the four perimeter edges of true four-vertex OBJ faces.
+- Reconstructed quads: pairs adjacent, nearly coplanar triangles in GLB, glTF, OBJ and STL meshes and removes the likely triangulation diagonal.
+- Unmatched triangles can be retained or ignored.
+- Quad Matching Angle controls how closely aligned the paired triangle normals must be.
 
-The first launch requires internet access because Three.js loads from a CDN. The service worker caches the app and Three.js modules as they are used, allowing later launches to work offline in most Safari/PWA configurations.
+GITHUB PAGES UPDATE
+1. Unzip this folder in Files.
+2. Open the existing GitHub repository in Safari.
+3. Select Add file > Upload files.
+4. Upload index.html, manifest.webmanifest, sw.js and README.txt from this folder.
+5. Choose Commit changes. Uploading files with the same names replaces the old versions.
+6. Wait for GitHub Pages to deploy, then reload the live app.
+7. If the old app remains, close the Home Screen app completely and reopen it, or clear Safari website data for the GitHub Pages site.
 
 SUPPORTED FILES
 - GLB / glTF
@@ -17,6 +23,7 @@ SUPPORTED FILES
 - STL
 
 NOTES
-- glTF files with separate .bin or texture files are not yet bundled automatically. GLB is recommended.
-- Every source edge becomes a separate cylinder. Junctions overlap and are not welded.
-- Very dense triangulated models can exceed iPad memory. Begin with Sharp Edges and increase Minimum Length.
+- GLB is recommended over glTF files that depend on separate .bin or texture files.
+- Every resulting edge becomes a separate cylinder. Junctions overlap and are not welded.
+- Quad reconstruction is inferred. Regular architectural and subdivision meshes work best. Irregular triangulations may need a lower matching angle or unmatched triangles set to Ignore.
+- Very dense models can exceed iPad memory. Increase Minimum Length or simplify the source mesh first.
