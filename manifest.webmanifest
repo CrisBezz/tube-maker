@@ -1,0 +1,10 @@
+{
+  "name": "Faceted Tube Maker",
+  "short_name": "Tube Maker",
+  "description": "Convert mesh edges into simple faceted cylinders on iPad.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#111318",
+  "theme_color": "#191c22",
+  "orientation": "any"
+}
