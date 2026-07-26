@@ -92,8 +92,11 @@
         <p class="note">The selected half is kept and mirrored across the source model’s bounding-box centre. Edges lying on the centre plane are generated once.</p>
       </div>
       <div class="section">
-        <h2>Simple junctions</h2>
-        <p class="note">Every edge becomes a separate straight faceted cylinder. Cylinders overlap at corners and branches. There are no welded or mitred junctions.</p>
+        <h2>Junctions</h2>
+        <div class="control"><label for="junctionMode">Junction style</label><select id="junctionMode"><option value="overlap">Simple overlaps</option><option value="mitre">Mitred two-way corners</option><option value="hubs">Welded node hubs</option><option value="hybrid" selected>Mitres + welded hubs</option></select></div>
+        <div class="control"><label for="hubScale">Hub diameter multiplier</label><output id="hubScaleOut">1.35×</output><input id="hubScale" type="range" min="1" max="2.5" value="1.35" step="0.05" /></div>
+        <div class="control"><label for="hubDetail">Hub detail</label><select id="hubDetail"><option value="0">Low-poly</option><option value="1" selected>Medium</option><option value="2">High</option></select></div>
+        <p class="note">Two-edge nodes can be cut on a shared mitre plane. Three-way and more complex nodes can receive a faceted welded hub. Very acute corners automatically fall back to a square cut to avoid extreme geometry.</p>
       </div>
     </aside>
   </main>
@@ -114,6 +117,7 @@ const fileInput = $('#fileInput'), generateBtn = $('#generateBtn'), exportBtn = 
 const edgeMode = $('#edgeMode'), angle = $('#angle'), angleOut = $('#angleOut'), quadAngle = $('#quadAngle'), quadAngleOut = $('#quadAngleOut'), unmatched = $('#unmatched'), minLength = $('#minLength');
 const diameter = $('#diameter'), sides = $('#sides'), sidesOut = $('#sidesOut'), caps = $('#caps'), showSource = $('#showSource');
 const symmetry = $('#symmetry'), symmetryAxis = $('#symmetryAxis'), symmetrySide = $('#symmetrySide'), showSymmetryPlane = $('#showSymmetryPlane');
+const junctionMode = $('#junctionMode'), hubScale = $('#hubScale'), hubScaleOut = $('#hubScaleOut'), hubDetail = $('#hubDetail');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 100000);
@@ -393,13 +397,103 @@ function collectEdges() {
   const info = edgeMode.value === 'quads' ? `${quadPairs.toLocaleString()} reconstructed quads • ${unmatchedTriangles.toLocaleString()} unmatched triangles` : '';
   return { edges: [...edges.values()], info };
 }
+function vertexKey(v) { return `${v.x.toPrecision(9)},${v.y.toPrecision(9)},${v.z.toPrecision(9)}`; }
+function buildJunctionData(edges) {
+  const nodes = new Map();
+  const register = (point, edgeIndex, endpoint) => {
+    const key = vertexKey(point);
+    if (!nodes.has(key)) nodes.set(key, { point: point.clone(), refs: [] });
+    nodes.get(key).refs.push({ edgeIndex, endpoint });
+  };
+  edges.forEach(([a,b], i) => { register(a,i,0); register(b,i,1); });
+  const cuts = edges.map(() => [null, null]);
+  const hubs = [];
+  const mode = junctionMode.value;
+  for (const node of nodes.values()) {
+    const degree = node.refs.length;
+    const directions = node.refs.map((ref) => {
+      const edge = edges[ref.edgeIndex];
+      return edge[1-ref.endpoint].clone().sub(node.point).normalize();
+    });
+    if ((mode === 'mitre' || mode === 'hybrid') && degree === 2) {
+      const d0 = directions[0], d1 = directions[1];
+      const dot = THREE.MathUtils.clamp(d0.dot(d1), -1, 1);
+      const turnAngle = Math.acos(dot);
+      // Near-parallel branches produce unstable, extremely long mitres.
+      if (turnAngle > THREE.MathUtils.degToRad(8)) {
+        const n0 = d0.clone().sub(d1).normalize();
+        const n1 = d1.clone().sub(d0).normalize();
+        if (Math.abs(n0.dot(d0)) > 0.12 && Math.abs(n1.dot(d1)) > 0.12) {
+          cuts[node.refs[0].edgeIndex][node.refs[0].endpoint] = n0;
+          cuts[node.refs[1].edgeIndex][node.refs[1].endpoint] = n1;
+        }
+      }
+    }
+    if ((mode === 'hubs' || mode === 'hybrid') && degree >= 3) hubs.push({ point: node.point.clone(), degree });
+    if (mode === 'hubs' && degree === 2) hubs.push({ point: node.point.clone(), degree });
+  }
+  return { cuts, hubs, nodes };
+}
+function makeBasis(axis) {
+  const helper = Math.abs(axis.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+  const u = new THREE.Vector3().crossVectors(axis, helper).normalize();
+  const v = new THREE.Vector3().crossVectors(axis, u).normalize();
+  return {u,v};
+}
+function facetedTubeForEdge(a, b, cutA = null, cutB = null) {
+  const axis = b.clone().sub(a);
+  const length = axis.length();
+  axis.normalize();
+  const radialSegments = Number(sides.value);
+  const radius = Number(diameter.value) / 2;
+  const {u,v} = makeBasis(axis);
+  const positions = [];
+  const indices = [];
+  const maxShift = Math.min(length * 0.42, radius * 5);
+  const ringPoint = (origin, normal, radial, isStart) => {
+    if (!normal || Math.abs(normal.dot(axis)) < 0.12) return origin.clone().add(radial);
+    let shift = -normal.dot(radial) / normal.dot(axis);
+    shift = THREE.MathUtils.clamp(shift, -maxShift, maxShift);
+    // At the far end the same axis parameterisation is used from b.
+    return origin.clone().add(radial).addScaledVector(axis, shift);
+  };
+  for (let ring=0; ring<2; ring++) {
+    const origin = ring === 0 ? a : b;
+    const normal = ring === 0 ? cutA : cutB;
+    for (let i=0; i<radialSegments; i++) {
+      const theta = i / radialSegments * Math.PI * 2;
+      const radial = u.clone().multiplyScalar(Math.cos(theta)*radius).addScaledVector(v, Math.sin(theta)*radius);
+      const p = ringPoint(origin, normal, radial, ring===0);
+      positions.push(p.x,p.y,p.z);
+    }
+  }
+  for (let i=0;i<radialSegments;i++) {
+    const j=(i+1)%radialSegments;
+    indices.push(i,j,radialSegments+j, i,radialSegments+j,radialSegments+i);
+  }
+  if (caps.checked) {
+    const startCentre = positions.length/3; positions.push(a.x,a.y,a.z);
+    const endCentre = positions.length/3; positions.push(b.x,b.y,b.z);
+    for (let i=0;i<radialSegments;i++) {
+      const j=(i+1)%radialSegments;
+      indices.push(startCentre,j,i);
+      indices.push(endCentre,radialSegments+i,radialSegments+j);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
 function cylinderForEdge(a, b) {
-  const length = a.distanceTo(b);
-  const geometry = new THREE.CylinderGeometry(Number(diameter.value) / 2, Number(diameter.value) / 2, length, Number(sides.value), 1, !caps.checked);
-  const midpoint = a.clone().add(b).multiplyScalar(0.5);
-  const direction = b.clone().sub(a).normalize();
-  geometry.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction));
-  geometry.translate(midpoint.x, midpoint.y, midpoint.z);
+  return facetedTubeForEdge(a,b,null,null);
+}
+function hubGeometry(point) {
+  const radius = Number(diameter.value) * Number(hubScale.value) / 2;
+  const detail = Number(hubDetail.value);
+  const geometry = new THREE.IcosahedronGeometry(radius, detail);
+  geometry.translate(point.x,point.y,point.z);
   return geometry;
 }
 async function generateTubes() {
@@ -412,21 +506,35 @@ async function generateTubes() {
     const edges = symmetryResult.edges;
     if (!edges.length) { setStatus(edgeMode.value === 'objQuads' ? 'No original OBJ quad faces were found' : 'No eligible edges found'); return; }
     if (edges.length > 50000 && !confirm(`This model has ${edges.length.toLocaleString()} edges. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
-    setStatus(`Generating ${edges.length.toLocaleString()} tubes…`);
+    const junctionData = buildJunctionData(edges);
+    setStatus(`Generating ${edges.length.toLocaleString()} tubes${junctionData.hubs.length ? ` and ${junctionData.hubs.length.toLocaleString()} hubs` : ''}…`);
     await new Promise((resolve) => requestAnimationFrame(resolve));
     disposeObject(tubeRoot);
     tubeRoot = new THREE.Group();
     const material = new THREE.MeshStandardMaterial({ color: 0xe6b85c, roughness: 0.58, metalness: 0.08, flatShading: true });
     const batchSize = 1000;
     for (let start = 0; start < edges.length; start += batchSize) {
-      const geometries = edges.slice(start, start + batchSize).map(([a, b]) => cylinderForEdge(a, b));
+      const geometries = edges.slice(start, start + batchSize).map(([a, b], localIndex) => {
+        const edgeIndex = start + localIndex;
+        return facetedTubeForEdge(a, b, junctionData.cuts[edgeIndex][0], junctionData.cuts[edgeIndex][1]);
+      });
       const merged = mergeGeometries(geometries, false);
       geometries.forEach((g) => g.dispose());
       if (merged) tubeRoot.add(new THREE.Mesh(merged, material));
       if (start % 5000 === 0) { setStatus(`Generating… ${Math.min(start + batchSize, edges.length).toLocaleString()} / ${edges.length.toLocaleString()}`); await new Promise((resolve) => requestAnimationFrame(resolve)); }
     }
+    if (junctionData.hubs.length) {
+      const hubBatchSize = 500;
+      for (let start = 0; start < junctionData.hubs.length; start += hubBatchSize) {
+        const geometries = junctionData.hubs.slice(start,start+hubBatchSize).map((hub) => hubGeometry(hub.point));
+        const merged = mergeGeometries(geometries,false);
+        geometries.forEach((g)=>g.dispose());
+        if (merged) tubeRoot.add(new THREE.Mesh(merged,material));
+      }
+    }
     scene.add(tubeRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
-    setStatus(`Generated ${edges.length.toLocaleString()} separate tubes${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${result.info ? ` • ${result.info}` : ''}`); updateStats(edges.length);
+    const modeLabel = junctionMode.options[junctionMode.selectedIndex].text;
+    setStatus(`Generated ${edges.length.toLocaleString()} tubes • ${modeLabel}${junctionData.hubs.length ? ` • ${junctionData.hubs.length.toLocaleString()} welded hubs` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${result.info ? ` • ${result.info}` : ''}`); updateStats(edges.length, junctionData.hubs.length);
   } catch (error) { console.error(error); setStatus(`Generation failed: ${error.message || error}`); }
   finally { generateBtn.disabled = false; }
 }
@@ -444,10 +552,10 @@ function makeExample() {
   const group = new THREE.Group(); group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1)));
   sourceName = 'quad-grid-example'; originalObjQuadEdges = null; edgeMode.value = 'quads'; setSource(normaliseImported(group)); setStatus('Example model loaded');
 }
-function updateStats(tubeCount) {
+function updateStats(tubeCount, hubCount = 0) {
   let sourceTriangles = 0;
   sourceRoot?.traverse((obj) => { if (obj.isMesh) sourceTriangles += obj.geometry.index ? obj.geometry.index.count / 3 : obj.geometry.getAttribute('position').count / 3; });
-  statsEl.textContent = `${Math.round(sourceTriangles).toLocaleString()} triangles${tubeCount == null ? '' : ` • ${tubeCount.toLocaleString()} tubes`}`;
+  statsEl.textContent = `${Math.round(sourceTriangles).toLocaleString()} triangles${tubeCount == null ? '' : ` • ${tubeCount.toLocaleString()} tubes${hubCount ? ` • ${hubCount.toLocaleString()} hubs` : ''}`}`;
 }
 fileInput.addEventListener('change', () => { const file = fileInput.files?.[0]; if (file) loadFile(file).catch((e) => { console.error(e); setStatus(`Load failed: ${e.message || e}`); }); fileInput.value = ''; });
 exampleBtn.addEventListener('click', makeExample);
@@ -458,6 +566,7 @@ showSource.addEventListener('change', () => { if (sourceRoot) sourceRoot.visible
 angle.addEventListener('input', () => angleOut.value = `${angle.value}°`);
 quadAngle.addEventListener('input', () => quadAngleOut.value = `${quadAngle.value}°`);
 sides.addEventListener('input', () => sidesOut.value = sides.value);
+hubScale.addEventListener('input', () => hubScaleOut.value = `${Number(hubScale.value).toFixed(2)}×`);
 function resize() { const w = viewport.clientWidth, h = viewport.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(viewport); resize();
 renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });

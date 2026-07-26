@@ -35,3 +35,11 @@ NEW SYMMETRY MODE
 - The app keeps that half and mirrors it across the bounding-box centre plane.
 - Centre-line edges are generated only once.
 - The translucent centre-plane preview can be hidden.
+
+
+VERSION 4 — MITRED / WELDED JUNCTIONS
+- Simple overlap mode remains available.
+- Mitred mode gives degree-2 corners a shared angled cut plane.
+- Welded hubs add faceted icosahedral nodes at branches.
+- Hybrid mode combines mitres at two-way corners with hubs at nodes of degree 3 or more.
+- Very acute or unstable mitres automatically revert to perpendicular cuts.
