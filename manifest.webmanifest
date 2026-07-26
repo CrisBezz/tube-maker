@@ -1,7 +1,7 @@
 {
-  "name": "Faceted Tube Maker",
-  "short_name": "Tube Maker",
-  "description": "Convert mesh edges into simple faceted cylinders on iPad.",
+  "name": "Mesh Line Replacer",
+  "short_name": "Mesh Replacer",
+  "description": "Convert mesh lines into tubes or inset surface-web meshes on iPad.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#111318",

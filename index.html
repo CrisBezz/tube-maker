@@ -21,7 +21,7 @@
     .app { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
     .toolbar { display: flex; gap: 8px; align-items: center; padding: max(10px, env(safe-area-inset-top)) 12px 10px; background: #191c22; border-bottom: 1px solid #30343d; overflow-x: auto; }
     .title { font-weight: 800; margin-right: auto; white-space: nowrap; }
-    .workspace { min-height: 0; display: grid; grid-template-columns: 1fr 320px; }
+    .workspace { min-height: 0; display: grid; grid-template-columns: 1fr 340px; }
     .viewport { position: relative; min-width: 0; background: radial-gradient(circle at 50% 35%, #363c47, #17191f 65%); }
     .viewport canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     .hint { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: #c7cad1; pointer-events: none; line-height: 1.5; }
@@ -31,7 +31,7 @@
     .section h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .09em; color: #aeb4c0; }
     .control { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; margin-bottom: 13px; }
     .control input[type="range"] { grid-column: 1 / -1; width: 100%; min-height: 30px; }
-    .control select, .control input[type="number"] { color: #fff; background: #13161b; border: 1px solid #414754; border-radius: 9px; padding: 10px; max-width: 145px; min-height: 44px; }
+    .control select, .control input[type="number"] { color: #fff; background: #13161b; border: 1px solid #414754; border-radius: 9px; padding: 10px; max-width: 170px; min-height: 44px; }
     .check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
     .check input { width: 22px; height: 22px; }
     .note { margin: 0; color: #c6cad2; line-height: 1.5; }
@@ -60,7 +60,7 @@
     <label class="file-button" for="fileInput">Import model</label>
     <input id="fileInput" type="file" accept=".glb,.gltf,.obj,.stl,model/gltf-binary,model/gltf+json" />
     <button id="exampleBtn" class="secondary">Example</button>
-    <button id="generateBtn" disabled>Generate mesh</button>
+    <button id="generateBtn" disabled>Generate</button>
     <button id="exportBtn" class="secondary" disabled>Export GLB</button>
   </header>
   <main class="workspace">
@@ -69,39 +69,47 @@
     </section>
     <aside class="panel">
       <div class="section">
-        <h2>Source edges</h2>
+        <h2>Replacement</h2>
+        <div class="control"><label for="replaceMode">Replace with</label><select id="replaceMode"><option value="tube">Faceted tubes</option><option value="surfaceWeb">Inset surface web</option></select></div>
+        <p class="note">Inset surface web returns to the original mesh, insets each face and removes the centre, leaving one connected single-face-thick web along the mesh lines.</p>
+      </div>
+      <div class="section">
+        <h2>Source topology</h2>
         <div class="control"><label for="edgeMode">Topology mode</label><select id="edgeMode"><option value="quads">Reconstructed quads</option><option value="objQuads">Original OBJ quads</option><option value="sharp">Sharp edges</option><option value="all">All triangle edges</option></select></div>
         <div class="control"><label for="quadAngle">Quad matching angle</label><output id="quadAngleOut">8°</output><input id="quadAngle" type="range" min="0.1" max="30" value="8" step="0.1" /></div>
         <div class="control"><label for="unmatched">Unmatched triangles</label><select id="unmatched"><option value="keep">Keep perimeter edges</option><option value="ignore">Ignore</option></select></div>
         <div class="control"><label for="angle">Sharp-edge angle</label><output id="angleOut">30°</output><input id="angle" type="range" min="1" max="120" value="30" /></div>
         <div class="control"><label for="minLength">Minimum length</label><input id="minLength" type="number" min="0" step="0.001" value="0" inputmode="decimal" /></div>
       </div>
-      <div class="section">
-        <h2>Replacement geometry</h2>
-        <div class="control"><label for="replacementMode">Replace each line with</label><select id="replacementMode"><option value="tubes">Faceted cylinder / tube</option><option value="ribbons">Centred quad face / ribbon</option></select></div>
-        <div class="control"><label for="diameter">Tube diameter</label><input id="diameter" type="number" min="0.0001" step="0.01" value="0.05" inputmode="decimal" /></div>
-        <div class="control"><label for="sides">Tube facets</label><output id="sidesOut">6</output><input id="sides" type="range" min="3" max="16" value="6" /></div>
+      <div id="tubeSection" class="section">
+        <h2>Tube geometry</h2>
+        <div class="control"><label for="diameter">Diameter</label><input id="diameter" type="number" min="0.0001" step="0.01" value="0.05" inputmode="decimal" /></div>
+        <div class="control"><label for="sides">Facets</label><output id="sidesOut">6</output><input id="sides" type="range" min="3" max="16" value="6" /></div>
         <label class="check"><input id="caps" type="checkbox" checked /> Cap tube ends</label>
-        <div class="control"><label for="ribbonWidth">Quad/ribbon width</label><input id="ribbonWidth" type="number" min="0.0001" step="0.01" value="0.08" inputmode="decimal" /></div>
-        <div class="control"><label for="ribbonNormal">Ribbon reference normal</label><select id="ribbonNormal"><option value="auto">Auto per connected network</option><option value="x">X axis</option><option value="y" selected>Y axis</option><option value="z">Z axis</option></select></div>
-        <label class="check"><input id="doubleSidedRibbon" type="checkbox" checked /> Double-sided ribbon material</label>
+      </div>
+      <div id="webSection" class="section hidden">
+        <h2>Inset surface web</h2>
+        <div class="control"><label for="webWidth">Web width</label><input id="webWidth" type="number" min="0.0001" step="0.01" value="0.05" inputmode="decimal" /></div>
+        <label class="check"><input id="doubleSidedWeb" type="checkbox" checked /> Double-sided preview material</label>
+        <p class="note">Each face is inset in its own plane. The centre opening is removed and the remaining border is welded into a single exported mesh. Width is reduced locally if a face would collapse.</p>
+      </div>
+      <div class="section">
+        <h2>Display</h2>
         <label class="check"><input id="showSource" type="checkbox" checked /> Show source model</label>
-        <p class="note">Ribbon mode creates one quad per edge, welds coincident vertices, and fills node gaps with triangular fans. The export is one mesh object and one face thick.</p>
       </div>
       <div class="section">
         <h2>Symmetry</h2>
-        <label class="check"><input id="symmetry" type="checkbox" /> Make generated tubes symmetrical</label>
+        <label class="check"><input id="symmetry" type="checkbox" /> Make generated result symmetrical</label>
         <div class="control"><label for="symmetryAxis">Mirror plane</label><select id="symmetryAxis"><option value="x">X centre plane (left/right)</option><option value="y">Y centre plane (top/bottom)</option><option value="z">Z centre plane (front/back)</option></select></div>
         <div class="control"><label for="symmetrySide">Source half</label><select id="symmetrySide"><option value="positive">Positive side</option><option value="negative">Negative side</option></select></div>
         <label class="check"><input id="showSymmetryPlane" type="checkbox" checked /> Show centre plane</label>
-        <p class="note">The selected half is kept and mirrored across the source model’s bounding-box centre. Edges lying on the centre plane are generated once.</p>
+        <p class="note">The selected half is kept and mirrored across the source model’s bounding-box centre. Geometry lying on the centre plane is only generated once.</p>
       </div>
-      <div class="section">
-        <h2>Junctions</h2>
+      <div id="junctionSection" class="section">
+        <h2>Tube junctions</h2>
         <div class="control"><label for="junctionMode">Junction style</label><select id="junctionMode"><option value="overlap">Simple overlaps</option><option value="mitre">Mitred two-way corners</option><option value="hubs">Welded node hubs</option><option value="hybrid" selected>Mitres + welded hubs</option></select></div>
         <div class="control"><label for="hubScale">Hub diameter multiplier</label><output id="hubScaleOut">1.35×</output><input id="hubScale" type="range" min="1" max="2.5" value="1.35" step="0.05" /></div>
         <div class="control"><label for="hubDetail">Hub detail</label><select id="hubDetail"><option value="0">Low-poly</option><option value="1" selected>Medium</option><option value="2">High</option></select></div>
-        <p class="note">Two-edge nodes can be cut on a shared mitre plane. Three-way and more complex nodes can receive a faceted welded hub. Very acute corners automatically fall back to a square cut to avoid extreme geometry.</p>
       </div>
     </aside>
   </main>
@@ -119,10 +127,13 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 const $ = (s) => document.querySelector(s);
 const viewport = $('#viewport'), hint = $('#hint'), statusEl = $('#status'), statsEl = $('#stats');
 const fileInput = $('#fileInput'), generateBtn = $('#generateBtn'), exportBtn = $('#exportBtn'), exampleBtn = $('#exampleBtn');
+const replaceMode = $('#replaceMode');
 const edgeMode = $('#edgeMode'), angle = $('#angle'), angleOut = $('#angleOut'), quadAngle = $('#quadAngle'), quadAngleOut = $('#quadAngleOut'), unmatched = $('#unmatched'), minLength = $('#minLength');
-const replacementMode = $('#replacementMode'), diameter = $('#diameter'), sides = $('#sides'), sidesOut = $('#sidesOut'), caps = $('#caps'), ribbonWidth = $('#ribbonWidth'), ribbonNormal = $('#ribbonNormal'), doubleSidedRibbon = $('#doubleSidedRibbon'), showSource = $('#showSource');
+const diameter = $('#diameter'), sides = $('#sides'), sidesOut = $('#sidesOut'), caps = $('#caps'), showSource = $('#showSource');
+const webWidth = $('#webWidth'), doubleSidedWeb = $('#doubleSidedWeb');
 const symmetry = $('#symmetry'), symmetryAxis = $('#symmetryAxis'), symmetrySide = $('#symmetrySide'), showSymmetryPlane = $('#showSymmetryPlane');
 const junctionMode = $('#junctionMode'), hubScale = $('#hubScale'), hubScaleOut = $('#hubScaleOut'), hubDetail = $('#hubDetail');
+const tubeSection = $('#tubeSection'), webSection = $('#webSection'), junctionSection = $('#junctionSection');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 100000);
@@ -143,21 +154,31 @@ const grid = new THREE.GridHelper(10, 20, 0x697180, 0x3c424c);
 scene.add(grid);
 
 let sourceRoot = null;
-let tubeRoot = null;
-let sourceName = 'faceted-tubes';
+let resultRoot = null;
+let sourceName = 'mesh-line-replacer';
 let originalObjQuadEdges = null;
+let originalObjQuadFaces = null;
 let symmetryPlaneHelper = null;
 
 function setStatus(message) { statusEl.textContent = message; }
-function sourceBounds() {
-  return sourceRoot ? new THREE.Box3().setFromObject(sourceRoot) : new THREE.Box3();
-}
+function sourceBounds() { return sourceRoot ? new THREE.Box3().setFromObject(sourceRoot) : new THREE.Box3(); }
 function symmetryCentre() {
   const box = sourceBounds();
   return box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
 }
+function updateModeUI() {
+  const web = replaceMode.value === 'surfaceWeb';
+  tubeSection.classList.toggle('hidden', web);
+  junctionSection.classList.toggle('hidden', web);
+  webSection.classList.toggle('hidden', !web);
+}
 function updateSymmetryPlane() {
-  if (symmetryPlaneHelper) { symmetryPlaneHelper.geometry.dispose(); symmetryPlaneHelper.material.dispose(); symmetryPlaneHelper.removeFromParent(); symmetryPlaneHelper = null; }
+  if (symmetryPlaneHelper) {
+    symmetryPlaneHelper.geometry.dispose();
+    symmetryPlaneHelper.material.dispose();
+    symmetryPlaneHelper.removeFromParent();
+    symmetryPlaneHelper = null;
+  }
   if (!sourceRoot || !symmetry.checked || !showSymmetryPlane.checked) return;
   const box = sourceBounds();
   if (box.isEmpty()) return;
@@ -177,34 +198,6 @@ function updateSymmetryPlane() {
   symmetryPlaneHelper.renderOrder = 10;
   scene.add(symmetryPlaneHelper);
 }
-function applySymmetryToEdges(edges) {
-  if (!symmetry.checked || !sourceRoot) return { edges, mirrored: false, centre: null };
-  const axis = symmetryAxis.value;
-  const axisIndex = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
-  const centre = symmetryCentre();
-  const c = centre.getComponent(axisIndex);
-  const box = sourceBounds();
-  const span = box.getSize(new THREE.Vector3()).getComponent(axisIndex);
-  const tolerance = Math.max(span * 1e-7, 1e-7);
-  const positive = symmetrySide.value === 'positive';
-  const kept = new Map();
-  const add = (a,b) => addEdge(kept,a,b);
-  for (const [a0,b0] of edges) {
-    const midpoint = (a0.getComponent(axisIndex) + b0.getComponent(axisIndex)) * 0.5;
-    if ((positive && midpoint < c - tolerance) || (!positive && midpoint > c + tolerance)) continue;
-    const a = a0.clone(), b = b0.clone();
-    add(a,b);
-    const aOn = Math.abs(a.getComponent(axisIndex)-c) <= tolerance;
-    const bOn = Math.abs(b.getComponent(axisIndex)-c) <= tolerance;
-    if (aOn && bOn) continue;
-    const ma = a.clone(), mb = b.clone();
-    ma.setComponent(axisIndex, 2*c - ma.getComponent(axisIndex));
-    mb.setComponent(axisIndex, 2*c - mb.getComponent(axisIndex));
-    add(ma,mb);
-  }
-  return { edges: [...kept.values()], mirrored: true, centre };
-}
-
 function disposeObject(root) {
   if (!root) return;
   root.traverse((obj) => {
@@ -240,9 +233,10 @@ function normaliseImported(root) {
   });
   return group;
 }
-function parseObjQuadEdges(text) {
+function parseObjData(text) {
   const vertices = [];
   const edgeMap = new Map();
+  const faces = [];
   const lines = text.split(/\r?\n/);
   const resolveIndex = (raw) => {
     const value = Number(raw);
@@ -258,23 +252,31 @@ function parseObjQuadEdges(text) {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
     const parts = line.split(/\s+/);
-    if (parts[0] === 'v' && parts.length >= 4) vertices.push(new THREE.Vector3(Number(parts[1]), Number(parts[2]), Number(parts[3])));
-    if (parts[0] === 'f' && parts.length === 5) {
-      const ids = parts.slice(1).map((token) => resolveIndex(token.split('/')[0]));
-      for (let i = 0; i < 4; i++) addIndexEdge(ids[i], ids[(i + 1) % 4]);
+    if (parts[0] === 'v' && parts.length >= 4) {
+      vertices.push(new THREE.Vector3(Number(parts[1]), Number(parts[2]), Number(parts[3])));
+    }
+    if (parts[0] === 'f' && parts.length >= 4) {
+      const ids = parts.slice(1).map((token) => resolveIndex(token.split('/')[0])).filter((id) => id != null);
+      if (ids.length === 4) {
+        faces.push(ids.map((id) => vertices[id].clone()));
+        for (let i = 0; i < 4; i++) addIndexEdge(ids[i], ids[(i + 1) % 4]);
+      }
     }
   }
-  return [...edgeMap.values()];
+  return { edges: [...edgeMap.values()], faces };
 }
 async function loadFile(file) {
   setStatus(`Loading ${file.name}…`);
-  sourceName = file.name.replace(/\.[^.]+$/, '') || 'faceted-tubes';
+  sourceName = file.name.replace(/\.[^.]+$/, '') || 'mesh-line-replacer';
   originalObjQuadEdges = null;
+  originalObjQuadFaces = null;
   const ext = file.name.split('.').pop()?.toLowerCase();
   let loaded;
   if (ext === 'obj') {
     const text = await file.text();
-    originalObjQuadEdges = parseObjQuadEdges(text);
+    const parsed = parseObjData(text);
+    originalObjQuadEdges = parsed.edges;
+    originalObjQuadFaces = parsed.faces;
     loaded = new OBJLoader().parse(text);
   } else {
     const url = URL.createObjectURL(file);
@@ -290,8 +292,8 @@ async function loadFile(file) {
   setStatus(`${file.name} loaded${originalObjQuadEdges?.length ? ` • ${originalObjQuadEdges.length.toLocaleString()} original quad edges` : ''}`);
 }
 function setSource(group) {
-  disposeObject(sourceRoot); disposeObject(tubeRoot);
-  tubeRoot = null; sourceRoot = group; scene.add(group); fitCamera(group);
+  disposeObject(sourceRoot); disposeObject(resultRoot);
+  resultRoot = null; sourceRoot = group; scene.add(group); fitCamera(group);
   hint.classList.add('hidden'); generateBtn.disabled = false; exportBtn.disabled = true; updateStats(); updateSymmetryPlane();
 }
 function addEdge(map, a, b) {
@@ -300,15 +302,33 @@ function addEdge(map, a, b) {
   if (!map.has(key)) map.set(key, [a.clone(), b.clone()]);
 }
 function edgeIndexKey(a, b) { return a < b ? `${a}|${b}` : `${b}|${a}`; }
-function reconstructQuadEdges(geometry) {
+function prepareMergedGeometry(geometry) {
   const positionOnly = new THREE.BufferGeometry();
   positionOnly.setAttribute('position', geometry.getAttribute('position').clone());
   if (geometry.index) positionOnly.setIndex(geometry.index.clone());
   const working = mergeVertices(positionOnly, 1e-6);
   positionOnly.dispose();
+  return working;
+}
+function orderQuad(unique1, shared0, unique2, shared1, pos) {
+  const pts = [unique1, shared0, unique2, shared1].map((id) => new THREE.Vector3().fromBufferAttribute(pos, id));
+  const centre = pts.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / 4);
+  const normal = pts[1].clone().sub(pts[0]).cross(pts[3].clone().sub(pts[0])).normalize();
+  const u = pts[0].clone().sub(centre).normalize();
+  const v = normal.clone().cross(u).normalize();
+  const order = [0, 1, 2, 3].sort((ia, ib) => {
+    const pa = pts[ia].clone().sub(centre), pb = pts[ib].clone().sub(centre);
+    const aa = Math.atan2(pa.dot(v), pa.dot(u));
+    const ab = Math.atan2(pb.dot(v), pb.dot(u));
+    return aa - ab;
+  });
+  return order.map((i) => [unique1, shared0, unique2, shared1][i]);
+}
+function reconstructQuadData(geometry) {
+  const working = prepareMergedGeometry(geometry);
   const pos = working.getAttribute('position');
   const index = working.index;
-  if (!index || !pos) { working.dispose(); return { edges: [], pairs: 0, unmatched: 0 }; }
+  if (!index || !pos) { working.dispose(); return { edges: [], faces: [], pairs: 0, unmatched: 0 }; }
   const triangles = [];
   const adjacency = new Map();
   for (let i = 0; i < index.count; i += 3) {
@@ -346,6 +366,7 @@ function reconstructQuadEdges(geometry) {
   candidates.sort((a, b) => a.score - b.score);
   const matched = new Set();
   const edgeMap = new Map();
+  const faces = [];
   let pairs = 0;
   const addById = (a, b) => {
     const va = new THREE.Vector3().fromBufferAttribute(pos, a);
@@ -355,20 +376,20 @@ function reconstructQuadEdges(geometry) {
   for (const c of candidates) {
     if (matched.has(c.triA) || matched.has(c.triB)) continue;
     matched.add(c.triA); matched.add(c.triB); pairs++;
-    addById(c.unique1, c.shared[0]);
-    addById(c.unique1, c.shared[1]);
-    addById(c.unique2, c.shared[0]);
-    addById(c.unique2, c.shared[1]);
+    addById(c.unique1, c.shared[0]); addById(c.unique1, c.shared[1]); addById(c.unique2, c.shared[0]); addById(c.unique2, c.shared[1]);
+    const ordered = orderQuad(c.unique1, c.shared[0], c.unique2, c.shared[1], pos);
+    faces.push(ordered.map((id) => new THREE.Vector3().fromBufferAttribute(pos, id)));
   }
   if (unmatched.value === 'keep') {
     triangles.forEach((tri, triId) => {
       if (matched.has(triId)) return;
       addById(tri.ids[0], tri.ids[1]); addById(tri.ids[1], tri.ids[2]); addById(tri.ids[2], tri.ids[0]);
+      faces.push(tri.ids.map((id) => new THREE.Vector3().fromBufferAttribute(pos, id)));
     });
   }
   const unmatchedCount = triangles.length - matched.size;
   working.dispose();
-  return { edges: [...edgeMap.values()], pairs, unmatched: unmatchedCount };
+  return { edges: [...edgeMap.values()], faces, pairs, unmatched: unmatchedCount };
 }
 function collectEdges() {
   if (!sourceRoot) return { edges: [], info: '' };
@@ -378,29 +399,109 @@ function collectEdges() {
   }
   const edges = new Map();
   let quadPairs = 0, unmatchedTriangles = 0;
-  sourceRoot.updateMatrixWorld(true);
   sourceRoot.traverse((obj) => {
     if (!obj.isMesh) return;
     if (edgeMode.value === 'quads') {
-      const result = reconstructQuadEdges(obj.geometry);
+      const result = reconstructQuadData(obj.geometry);
       quadPairs += result.pairs; unmatchedTriangles += result.unmatched;
-      for (const [a0, b0] of result.edges) {
-        const a = a0.clone().applyMatrix4(obj.matrixWorld), b = b0.clone().applyMatrix4(obj.matrixWorld);
-        if (a.distanceTo(b) >= Number(minLength.value || 0)) addEdge(edges, a, b);
-      }
+      for (const [a, b] of result.edges) if (a.distanceTo(b) >= Number(minLength.value || 0)) addEdge(edges, a, b);
       return;
     }
     const edgeGeo = edgeMode.value === 'sharp' ? new THREE.EdgesGeometry(obj.geometry, Number(angle.value)) : new THREE.WireframeGeometry(obj.geometry);
     const p = edgeGeo.getAttribute('position');
     for (let i = 0; i < p.count; i += 2) {
-      const a = new THREE.Vector3().fromBufferAttribute(p, i).applyMatrix4(obj.matrixWorld);
-      const b = new THREE.Vector3().fromBufferAttribute(p, i + 1).applyMatrix4(obj.matrixWorld);
+      const a = new THREE.Vector3().fromBufferAttribute(p, i);
+      const b = new THREE.Vector3().fromBufferAttribute(p, i + 1);
       if (a.distanceTo(b) >= Number(minLength.value || 0)) addEdge(edges, a, b);
     }
     edgeGeo.dispose();
   });
   const info = edgeMode.value === 'quads' ? `${quadPairs.toLocaleString()} reconstructed quads • ${unmatchedTriangles.toLocaleString()} unmatched triangles` : '';
   return { edges: [...edges.values()], info };
+}
+function collectFaces() {
+  if (!sourceRoot) return { faces: [], info: '' };
+  if (edgeMode.value === 'objQuads') {
+    const faces = (originalObjQuadFaces || []).map((face) => face.map((p) => p.clone()));
+    return { faces, info: `${faces.length.toLocaleString()} original OBJ quad faces` };
+  }
+  const faces = [];
+  let quadPairs = 0, unmatchedTriangles = 0;
+  sourceRoot.traverse((obj) => {
+    if (!obj.isMesh) return;
+    if (edgeMode.value === 'quads') {
+      const result = reconstructQuadData(obj.geometry);
+      quadPairs += result.pairs; unmatchedTriangles += result.unmatched;
+      faces.push(...result.faces.map((face) => face.map((p) => p.clone())));
+      return;
+    }
+    const working = prepareMergedGeometry(obj.geometry);
+    const pos = working.getAttribute('position');
+    const idx = working.index;
+    if (idx && pos) {
+      for (let i = 0; i < idx.count; i += 3) {
+        const tri = [idx.getX(i), idx.getX(i + 1), idx.getX(i + 2)].map((id) => new THREE.Vector3().fromBufferAttribute(pos, id));
+        const e0 = tri[0].distanceTo(tri[1]), e1 = tri[1].distanceTo(tri[2]), e2 = tri[2].distanceTo(tri[0]);
+        if (Math.min(e0, e1, e2) >= Number(minLength.value || 0)) faces.push(tri);
+      }
+    }
+    working.dispose();
+  });
+  const info = edgeMode.value === 'quads' ? `${quadPairs.toLocaleString()} reconstructed quads • ${unmatchedTriangles.toLocaleString()} unmatched triangles` : `${faces.length.toLocaleString()} source faces`;
+  return { faces, info };
+}
+function applySymmetryToEdges(edges) {
+  if (!symmetry.checked || !sourceRoot) return { edges, mirrored: false, centre: null };
+  const axis = symmetryAxis.value;
+  const axisIndex = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+  const centre = symmetryCentre();
+  const c = centre.getComponent(axisIndex);
+  const box = sourceBounds();
+  const span = box.getSize(new THREE.Vector3()).getComponent(axisIndex);
+  const tolerance = Math.max(span * 1e-7, 1e-7);
+  const positive = symmetrySide.value === 'positive';
+  const kept = new Map();
+  const add = (a,b) => addEdge(kept,a,b);
+  for (const [a0,b0] of edges) {
+    const midpoint = (a0.getComponent(axisIndex) + b0.getComponent(axisIndex)) * 0.5;
+    if ((positive && midpoint < c - tolerance) || (!positive && midpoint > c + tolerance)) continue;
+    const a = a0.clone(), b = b0.clone();
+    add(a,b);
+    const aOn = Math.abs(a.getComponent(axisIndex)-c) <= tolerance;
+    const bOn = Math.abs(b.getComponent(axisIndex)-c) <= tolerance;
+    if (aOn && bOn) continue;
+    const ma = a.clone(), mb = b.clone();
+    ma.setComponent(axisIndex, 2*c - ma.getComponent(axisIndex));
+    mb.setComponent(axisIndex, 2*c - mb.getComponent(axisIndex));
+    add(ma,mb);
+  }
+  return { edges: [...kept.values()], mirrored: true, centre };
+}
+function applySymmetryToFaces(faces) {
+  if (!symmetry.checked || !sourceRoot) return { faces, mirrored: false, centre: null };
+  const axis = symmetryAxis.value;
+  const axisIndex = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+  const centre = symmetryCentre();
+  const c = centre.getComponent(axisIndex);
+  const box = sourceBounds();
+  const span = box.getSize(new THREE.Vector3()).getComponent(axisIndex);
+  const tolerance = Math.max(span * 1e-7, 1e-7);
+  const positive = symmetrySide.value === 'positive';
+  const result = [];
+  for (const face0 of faces) {
+    const centroid = face0.reduce((acc,p)=>acc.add(p), new THREE.Vector3()).multiplyScalar(1/face0.length);
+    if ((positive && centroid.getComponent(axisIndex) < c - tolerance) || (!positive && centroid.getComponent(axisIndex) > c + tolerance)) continue;
+    const face = face0.map((p)=>p.clone());
+    result.push(face);
+    if (face.every((p) => Math.abs(p.getComponent(axisIndex) - c) <= tolerance)) continue;
+    const mirrored = face.map((p) => {
+      const q = p.clone();
+      q.setComponent(axisIndex, 2*c - q.getComponent(axisIndex));
+      return q;
+    }).reverse();
+    result.push(mirrored);
+  }
+  return { faces: result, mirrored: true, centre };
 }
 function vertexKey(v) { return `${v.x.toPrecision(9)},${v.y.toPrecision(9)},${v.z.toPrecision(9)}`; }
 function buildJunctionData(edges) {
@@ -416,15 +517,11 @@ function buildJunctionData(edges) {
   const mode = junctionMode.value;
   for (const node of nodes.values()) {
     const degree = node.refs.length;
-    const directions = node.refs.map((ref) => {
-      const edge = edges[ref.edgeIndex];
-      return edge[1-ref.endpoint].clone().sub(node.point).normalize();
-    });
+    const directions = node.refs.map((ref) => edges[ref.edgeIndex][1-ref.endpoint].clone().sub(node.point).normalize());
     if ((mode === 'mitre' || mode === 'hybrid') && degree === 2) {
       const d0 = directions[0], d1 = directions[1];
       const dot = THREE.MathUtils.clamp(d0.dot(d1), -1, 1);
       const turnAngle = Math.acos(dot);
-      // Near-parallel branches produce unstable, extremely long mitres.
       if (turnAngle > THREE.MathUtils.degToRad(8)) {
         const n0 = d0.clone().sub(d1).normalize();
         const n1 = d1.clone().sub(d0).normalize();
@@ -437,7 +534,7 @@ function buildJunctionData(edges) {
     if ((mode === 'hubs' || mode === 'hybrid') && degree >= 3) hubs.push({ point: node.point.clone(), degree });
     if (mode === 'hubs' && degree === 2) hubs.push({ point: node.point.clone(), degree });
   }
-  return { cuts, hubs, nodes };
+  return { cuts, hubs };
 }
 function makeBasis(axis) {
   const helper = Math.abs(axis.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
@@ -455,11 +552,10 @@ function facetedTubeForEdge(a, b, cutA = null, cutB = null) {
   const positions = [];
   const indices = [];
   const maxShift = Math.min(length * 0.42, radius * 5);
-  const ringPoint = (origin, normal, radial, isStart) => {
+  const ringPoint = (origin, normal, radial) => {
     if (!normal || Math.abs(normal.dot(axis)) < 0.12) return origin.clone().add(radial);
     let shift = -normal.dot(radial) / normal.dot(axis);
     shift = THREE.MathUtils.clamp(shift, -maxShift, maxShift);
-    // At the far end the same axis parameterisation is used from b.
     return origin.clone().add(radial).addScaledVector(axis, shift);
   };
   for (let ring=0; ring<2; ring++) {
@@ -468,7 +564,7 @@ function facetedTubeForEdge(a, b, cutA = null, cutB = null) {
     for (let i=0; i<radialSegments; i++) {
       const theta = i / radialSegments * Math.PI * 2;
       const radial = u.clone().multiplyScalar(Math.cos(theta)*radius).addScaledVector(v, Math.sin(theta)*radius);
-      const p = ringPoint(origin, normal, radial, ring===0);
+      const p = ringPoint(origin, normal, radial);
       positions.push(p.x,p.y,p.z);
     }
   }
@@ -491,9 +587,6 @@ function facetedTubeForEdge(a, b, cutA = null, cutB = null) {
   geometry.computeVertexNormals();
   return geometry;
 }
-function cylinderForEdge(a, b) {
-  return facetedTubeForEdge(a,b,null,null);
-}
 function hubGeometry(point) {
   const radius = Number(diameter.value) * Number(hubScale.value) / 2;
   const detail = Number(hubDetail.value);
@@ -501,186 +594,253 @@ function hubGeometry(point) {
   geometry.translate(point.x,point.y,point.z);
   return geometry;
 }
-
-function referenceNormalForEdges(edges) {
-  if (ribbonNormal.value === 'x') return new THREE.Vector3(1,0,0);
-  if (ribbonNormal.value === 'y') return new THREE.Vector3(0,1,0);
-  if (ribbonNormal.value === 'z') return new THREE.Vector3(0,0,1);
-  // Auto: choose the global axis least parallel to the network's average direction.
-  const average = new THREE.Vector3();
-  for (const [a,b] of edges) average.add(b.clone().sub(a).normalize());
-  if (average.lengthSq() < 1e-10) average.set(1,0,0); else average.normalize();
-  const axes = [new THREE.Vector3(1,0,0),new THREE.Vector3(0,1,0),new THREE.Vector3(0,0,1)];
-  axes.sort((u,v)=>Math.abs(u.dot(average))-Math.abs(v.dot(average)));
-  return axes[0];
+function polygonBasis(points) {
+  const p0 = points[0];
+  let normal = null;
+  for (let i = 1; i < points.length - 1; i++) {
+    const n = points[i].clone().sub(p0).cross(points[i + 1].clone().sub(p0));
+    if (n.lengthSq() > 1e-12) { normal = n.normalize(); break; }
+  }
+  if (!normal) return null;
+  const u = points[1].clone().sub(p0).normalize();
+  const v = normal.clone().cross(u).normalize();
+  return { origin: p0.clone(), normal, u, v };
 }
-function buildRibbonGeometry(edges) {
-  const width = Math.max(Number(ribbonWidth.value) || 0.08, 1e-8);
-  const half = width * 0.5;
-  const refNormal = referenceNormalForEdges(edges);
-  const nodes = new Map();
-  const edgeRecords = [];
-  const getNode = (p) => {
-    const key = vertexKey(p);
-    if (!nodes.has(key)) nodes.set(key,{ point:p.clone(), incidents:[] });
-    return nodes.get(key);
-  };
-  edges.forEach(([a,b], edgeIndex) => {
-    const dir = b.clone().sub(a);
-    const len = dir.length();
-    if (len < 1e-10) return;
-    dir.divideScalar(len);
-    let side = new THREE.Vector3().crossVectors(refNormal,dir);
-    if (side.lengthSq() < 1e-10) {
-      const fallback = Math.abs(dir.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
-      side.crossVectors(fallback,dir);
-    }
-    side.normalize().multiplyScalar(half);
-    const record={a:a.clone(),b:b.clone(),dir,side,edgeIndex};
-    edgeRecords.push(record);
-    getNode(a).incidents.push({record,endpoint:0});
-    getNode(b).incidents.push({record,endpoint:1});
+function projectPolygon(points, basis) {
+  return points.map((p) => {
+    const d = p.clone().sub(basis.origin);
+    return { x: d.dot(basis.u), y: d.dot(basis.v) };
   });
-  const positions=[]; const indices=[];
-  const push=(p)=>{const i=positions.length/3;positions.push(p.x,p.y,p.z);return i;};
-  const endpointMap=new Map();
-  const endpointKey=(rec,endpoint,sign)=>`${rec.edgeIndex}|${endpoint}|${sign}`;
-  for (const rec of edgeRecords) {
-    const aL=push(rec.a.clone().add(rec.side)), aR=push(rec.a.clone().sub(rec.side));
-    const bL=push(rec.b.clone().add(rec.side)), bR=push(rec.b.clone().sub(rec.side));
-    endpointMap.set(endpointKey(rec,0,1),aL); endpointMap.set(endpointKey(rec,0,-1),aR);
-    endpointMap.set(endpointKey(rec,1,1),bL); endpointMap.set(endpointKey(rec,1,-1),bR);
-    indices.push(aL,aR,bR, aL,bR,bL);
+}
+function signedArea2D(poly) {
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    area += a.x * b.y - b.x * a.y;
   }
-  // Fill every junction with a triangular fan. Boundary points are ordered around a local node plane.
-  for (const node of nodes.values()) {
-    if (!node.incidents.length) continue;
-    const centreIndex=push(node.point);
-    const candidates=[];
-    const normal=new THREE.Vector3();
-    for (const inc of node.incidents) {
-      const outward = inc.endpoint===0 ? inc.record.dir.clone() : inc.record.dir.clone().negate();
-      normal.add(new THREE.Vector3().crossVectors(outward,inc.record.side));
-      candidates.push({idx:endpointMap.get(endpointKey(inc.record,inc.endpoint,1)), p:node.point.clone().add(inc.record.side), outward});
-      candidates.push({idx:endpointMap.get(endpointKey(inc.record,inc.endpoint,-1)), p:node.point.clone().sub(inc.record.side), outward});
-    }
-    if (normal.lengthSq()<1e-10) normal.copy(refNormal); else normal.normalize();
-    let u=candidates[0].p.clone().sub(node.point);
-    if (u.lengthSq()<1e-10) u=new THREE.Vector3(1,0,0);
-    u.addScaledVector(normal,-u.dot(normal)).normalize();
-    if (u.lengthSq()<1e-10) u=makeBasis(normal).u;
-    const v=new THREE.Vector3().crossVectors(normal,u).normalize();
-    const unique=new Map();
-    for (const c of candidates) {
-      const vec=c.p.clone().sub(node.point);
-      const angle=Math.atan2(vec.dot(v),vec.dot(u));
-      const key=`${c.p.x.toPrecision(8)},${c.p.y.toPrecision(8)},${c.p.z.toPrecision(8)}`;
-      if (!unique.has(key)) unique.set(key,{...c,angle});
-    }
-    const ring=[...unique.values()].sort((a,b)=>a.angle-b.angle);
-    if (ring.length===2) {
-      indices.push(centreIndex,ring[0].idx,ring[1].idx);
-    } else if (ring.length>2) {
-      for (let i=0;i<ring.length;i++) indices.push(centreIndex,ring[i].idx,ring[(i+1)%ring.length].idx);
-    }
+  return area * 0.5;
+}
+function lineIntersection(a1, a2, b1, b2) {
+  const dax = a2.x - a1.x, day = a2.y - a1.y;
+  const dbx = b2.x - b1.x, dby = b2.y - b1.y;
+  const cross = dax * dby - day * dbx;
+  if (Math.abs(cross) < 1e-10) return null;
+  const t = ((b1.x - a1.x) * dby - (b1.y - a1.y) * dbx) / cross;
+  return { x: a1.x + t * dax, y: a1.y + t * day };
+}
+function insetPolygon2D(poly, distance) {
+  const area = signedArea2D(poly);
+  if (Math.abs(area) < 1e-12) return null;
+  const ccw = area > 0;
+  const lines = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p0 = poly[i], p1 = poly[(i + 1) % poly.length];
+    const ex = p1.x - p0.x, ey = p1.y - p0.y;
+    const len = Math.hypot(ex, ey);
+    if (len < 1e-12) return null;
+    const nx = ccw ? -ey / len : ey / len;
+    const ny = ccw ? ex / len : -ex / len;
+    lines.push({ a: { x: p0.x + nx * distance, y: p0.y + ny * distance }, b: { x: p1.x + nx * distance, y: p1.y + ny * distance } });
   }
-  let geometry=new THREE.BufferGeometry();
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  const result = [];
+  for (let i = 0; i < poly.length; i++) {
+    const prev = lines[(i - 1 + poly.length) % poly.length];
+    const curr = lines[i];
+    const p = lineIntersection(prev.a, prev.b, curr.a, curr.b);
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+    result.push(p);
+  }
+  const newArea = signedArea2D(result);
+  if (!Number.isFinite(newArea) || Math.sign(newArea) !== Math.sign(area) || Math.abs(newArea) < 1e-12) return null;
+  return result;
+}
+function insetFace3D(points, requestedDistance) {
+  const basis = polygonBasis(points);
+  if (!basis) return null;
+  const poly = projectPolygon(points, basis);
+  let distance = requestedDistance;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const inset2d = insetPolygon2D(poly, distance);
+    if (inset2d) {
+      const inner = inset2d.map((p) => basis.origin.clone().addScaledVector(basis.u, p.x).addScaledVector(basis.v, p.y));
+      return { inner, usedWidth: distance };
+    }
+    distance *= 0.6;
+  }
+  return null;
+}
+function faceWebGeometry(facePoints) {
+  if (facePoints.length < 3) return null;
+  const inset = insetFace3D(facePoints, Number(webWidth.value));
+  if (!inset) return null;
+  const positions = [];
+  const indices = [];
+  facePoints.forEach((p) => positions.push(p.x, p.y, p.z));
+  inset.inner.forEach((p) => positions.push(p.x, p.y, p.z));
+  const n = facePoints.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const oi = i, oj = j, ii = n + i, ij = n + j;
+    indices.push(oi, oj, ij, oi, ij, ii);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setIndex(indices);
-  geometry=mergeVertices(geometry,Math.max(width*1e-7,1e-9));
   geometry.computeVertexNormals();
-  return geometry;
+  return { geometry, usedWidth: inset.usedWidth };
 }
-async function generateRibbonMesh(edges, symmetryResult, result) {
-  setStatus(`Generating ${edges.length.toLocaleString()} centred quads and welded triangular junctions…`);
-  await new Promise((resolve)=>requestAnimationFrame(resolve));
-  disposeObject(tubeRoot);
-  tubeRoot=new THREE.Group();
-  const geometry=buildRibbonGeometry(edges);
-  const material=new THREE.MeshStandardMaterial({color:0xe6b85c,roughness:0.64,metalness:0.03,flatShading:false,side:doubleSidedRibbon.checked?THREE.DoubleSide:THREE.FrontSide});
-  const mesh=new THREE.Mesh(geometry,material);
-  mesh.name='Welded_Ribbon_Mesh';
-  tubeRoot.add(mesh); scene.add(tubeRoot);
-  sourceRoot.visible=showSource.checked; exportBtn.disabled=false;
-  const triangles=geometry.index?geometry.index.count/3:geometry.getAttribute('position').count/3;
-  setStatus(`Generated one welded ribbon mesh • ${edges.length.toLocaleString()} quad strips • ${Math.round(triangles).toLocaleString()} triangles${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${result.info ? ` • ${result.info}` : ''}`);
-  updateStats(edges.length,0,'ribbons');
-}
-
-async function generateTubes() {
-  if (!sourceRoot) return;
-  generateBtn.disabled = true; setStatus('Finding edges…');
+async function generateTubeResult() {
+  const result = collectEdges();
+  const symmetryResult = applySymmetryToEdges(result.edges);
+  const edges = symmetryResult.edges;
+  if (!edges.length) { setStatus(edgeMode.value === 'objQuads' ? 'No original OBJ quad faces were found' : 'No eligible edges found'); return; }
+  if (edges.length > 50000 && !confirm(`This model has ${edges.length.toLocaleString()} edges. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
+  const junctionData = buildJunctionData(edges);
+  setStatus(`Generating ${edges.length.toLocaleString()} tubes${junctionData.hubs.length ? ` and ${junctionData.hubs.length.toLocaleString()} hubs` : ''}…`);
   await new Promise((resolve) => requestAnimationFrame(resolve));
-  try {
-    const result = collectEdges();
-    const symmetryResult = applySymmetryToEdges(result.edges);
-    const edges = symmetryResult.edges;
-    if (!edges.length) { setStatus(edgeMode.value === 'objQuads' ? 'No original OBJ quad faces were found' : 'No eligible edges found'); return; }
-    if (edges.length > 50000 && !confirm(`This model has ${edges.length.toLocaleString()} edges. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
-    if (replacementMode.value === 'ribbons') { await generateRibbonMesh(edges, symmetryResult, result); return; }
-    const junctionData = buildJunctionData(edges);
-    setStatus(`Generating ${edges.length.toLocaleString()} tubes${junctionData.hubs.length ? ` and ${junctionData.hubs.length.toLocaleString()} hubs` : ''}…`);
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    disposeObject(tubeRoot);
-    tubeRoot = new THREE.Group();
-    const material = new THREE.MeshStandardMaterial({ color: 0xe6b85c, roughness: 0.58, metalness: 0.08, flatShading: true });
-    const batchSize = 1000;
-    for (let start = 0; start < edges.length; start += batchSize) {
-      const geometries = edges.slice(start, start + batchSize).map(([a, b], localIndex) => {
-        const edgeIndex = start + localIndex;
-        return facetedTubeForEdge(a, b, junctionData.cuts[edgeIndex][0], junctionData.cuts[edgeIndex][1]);
-      });
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({ color: 0xe6b85c, roughness: 0.58, metalness: 0.08, flatShading: true });
+  const batchSize = 1000;
+  for (let start = 0; start < edges.length; start += batchSize) {
+    const geometries = edges.slice(start, start + batchSize).map(([a, b], localIndex) => {
+      const edgeIndex = start + localIndex;
+      return facetedTubeForEdge(a, b, junctionData.cuts[edgeIndex][0], junctionData.cuts[edgeIndex][1]);
+    });
+    const merged = mergeGeometries(geometries, false);
+    geometries.forEach((g) => g.dispose());
+    if (merged) resultRoot.add(new THREE.Mesh(merged, material));
+    if (start % 5000 === 0) { setStatus(`Generating… ${Math.min(start + batchSize, edges.length).toLocaleString()} / ${edges.length.toLocaleString()}`); await new Promise((resolve) => requestAnimationFrame(resolve)); }
+  }
+  if (junctionData.hubs.length) {
+    const hubBatchSize = 500;
+    for (let start = 0; start < junctionData.hubs.length; start += hubBatchSize) {
+      const geometries = junctionData.hubs.slice(start, start + hubBatchSize).map((hub) => hubGeometry(hub.point));
       const merged = mergeGeometries(geometries, false);
       geometries.forEach((g) => g.dispose());
-      if (merged) tubeRoot.add(new THREE.Mesh(merged, material));
-      if (start % 5000 === 0) { setStatus(`Generating… ${Math.min(start + batchSize, edges.length).toLocaleString()} / ${edges.length.toLocaleString()}`); await new Promise((resolve) => requestAnimationFrame(resolve)); }
+      if (merged) resultRoot.add(new THREE.Mesh(merged, material));
     }
-    if (junctionData.hubs.length) {
-      const hubBatchSize = 500;
-      for (let start = 0; start < junctionData.hubs.length; start += hubBatchSize) {
-        const geometries = junctionData.hubs.slice(start,start+hubBatchSize).map((hub) => hubGeometry(hub.point));
-        const merged = mergeGeometries(geometries,false);
-        geometries.forEach((g)=>g.dispose());
-        if (merged) tubeRoot.add(new THREE.Mesh(merged,material));
-      }
+  }
+  scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
+  const modeLabel = junctionMode.options[junctionMode.selectedIndex].text;
+  setStatus(`Generated ${edges.length.toLocaleString()} tubes • ${modeLabel}${junctionData.hubs.length ? ` • ${junctionData.hubs.length.toLocaleString()} welded hubs` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${result.info ? ` • ${result.info}` : ''}`);
+  updateStats(edges.length, junctionData.hubs.length, 0);
+}
+async function generateSurfaceWebResult() {
+  const facesResult = collectFaces();
+  const symmetryResult = applySymmetryToFaces(facesResult.faces);
+  const faces = symmetryResult.faces;
+  if (!faces.length) { setStatus('No usable source faces were found for the inset surface web'); return; }
+  if (faces.length > 50000 && !confirm(`This model has ${faces.length.toLocaleString()} faces. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
+  setStatus(`Generating inset surface web from ${faces.length.toLocaleString()} faces…`);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({ color: 0x86d5df, roughness: 0.72, metalness: 0.02, side: doubleSidedWeb.checked ? THREE.DoubleSide : THREE.FrontSide, flatShading: false });
+  const geometries = [];
+  let usedFaces = 0, limitedFaces = 0;
+  const requestedWidth = Number(webWidth.value);
+  const batchSize = 1000;
+  for (let start = 0; start < faces.length; start += batchSize) {
+    const chunkGeometries = [];
+    for (const face of faces.slice(start, start + batchSize)) {
+      const built = faceWebGeometry(face);
+      if (!built) continue;
+      usedFaces++;
+      if (built.usedWidth < requestedWidth * 0.999) limitedFaces++;
+      chunkGeometries.push(built.geometry);
     }
-    scene.add(tubeRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
-    const modeLabel = junctionMode.options[junctionMode.selectedIndex].text;
-    setStatus(`Generated ${edges.length.toLocaleString()} tubes • ${modeLabel}${junctionData.hubs.length ? ` • ${junctionData.hubs.length.toLocaleString()} welded hubs` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${result.info ? ` • ${result.info}` : ''}`); updateStats(edges.length, junctionData.hubs.length);
-  } catch (error) { console.error(error); setStatus(`Generation failed: ${error.message || error}`); }
-  finally { generateBtn.disabled = false; }
+    if (chunkGeometries.length) {
+      const merged = mergeGeometries(chunkGeometries, false);
+      chunkGeometries.forEach((g) => g.dispose());
+      if (merged) geometries.push(merged);
+    }
+    if (start % 5000 === 0) { setStatus(`Generating… ${Math.min(start + batchSize, faces.length).toLocaleString()} / ${faces.length.toLocaleString()}`); await new Promise((resolve) => requestAnimationFrame(resolve)); }
+  }
+  if (!geometries.length) {
+    setStatus('No valid inset faces could be created. Try a smaller web width.');
+    return;
+  }
+  const merged = mergeGeometries(geometries, false);
+  geometries.forEach((g) => g.dispose());
+  if (!merged) {
+    setStatus('Failed to merge inset geometry.');
+    return;
+  }
+  const welded = mergeVertices(merged, 1e-6);
+  merged.dispose();
+  welded.computeVertexNormals();
+  resultRoot.add(new THREE.Mesh(welded, material));
+  scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
+  setStatus(`Generated inset surface web • ${usedFaces.toLocaleString()} faces used${limitedFaces ? ` • ${limitedFaces.toLocaleString()} auto-limited` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${facesResult.info ? ` • ${facesResult.info}` : ''}`);
+  updateStats(0, 0, usedFaces);
+}
+async function generateResult() {
+  if (!sourceRoot) return;
+  generateBtn.disabled = true;
+  try {
+    if (replaceMode.value === 'surfaceWeb') await generateSurfaceWebResult();
+    else await generateTubeResult();
+  } catch (error) {
+    console.error(error);
+    setStatus(`Generation failed: ${error.message || error}`);
+  } finally {
+    generateBtn.disabled = false;
+  }
 }
 function exportGlb() {
-  if (!tubeRoot) return;
-  exportBtn.disabled = true; setStatus('Preparing GLB…');
-  new GLTFExporter().parse(tubeRoot, (result) => {
+  if (!resultRoot) return;
+  exportBtn.disabled = true;
+  setStatus('Preparing GLB…');
+  const suffix = replaceMode.value === 'surfaceWeb' ? 'surface-web' : 'tubes';
+  new GLTFExporter().parse(resultRoot, (result) => {
     const blob = new Blob([result], { type: 'model/gltf-binary' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `${sourceName}-${replacementMode.value === 'ribbons' ? 'ribbon-mesh' : 'tubes'}.glb`; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 3000); setStatus('GLB exported'); exportBtn.disabled = false;
-  }, (error) => { console.error(error); setStatus(`Export failed: ${error.message || error}`); exportBtn.disabled = false; }, { binary: true, onlyVisible: true });
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sourceName}-${suffix}.glb`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    setStatus('GLB exported');
+    exportBtn.disabled = false;
+  }, (error) => {
+    console.error(error);
+    setStatus(`Export failed: ${error.message || error}`);
+    exportBtn.disabled = false;
+  }, { binary: true, onlyVisible: true });
 }
 function makeExample() {
-  const group = new THREE.Group(); group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1)));
-  sourceName = 'quad-grid-example'; originalObjQuadEdges = null; edgeMode.value = 'quads'; setSource(normaliseImported(group)); setStatus('Example model loaded');
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 1.1, 1, 1, 1)));
+  sourceName = 'surface-web-example'; originalObjQuadEdges = null; originalObjQuadFaces = null; edgeMode.value = 'quads'; setSource(normaliseImported(group)); setStatus('Example model loaded');
 }
-function updateStats(tubeCount, hubCount = 0, kind = 'tubes') {
+function updateStats(tubeCount = null, hubCount = 0, webFaces = 0) {
   let sourceTriangles = 0;
   sourceRoot?.traverse((obj) => { if (obj.isMesh) sourceTriangles += obj.geometry.index ? obj.geometry.index.count / 3 : obj.geometry.getAttribute('position').count / 3; });
-  statsEl.textContent = `${Math.round(sourceTriangles).toLocaleString()} source triangles${tubeCount == null ? '' : ` • ${tubeCount.toLocaleString()} ${kind === 'ribbons' ? 'quad strips' : 'tubes'}${hubCount ? ` • ${hubCount.toLocaleString()} hubs` : ''}`}`;
+  const bits = [`${Math.round(sourceTriangles).toLocaleString()} triangles`];
+  if (replaceMode.value === 'surfaceWeb') { if (webFaces) bits.push(`${webFaces.toLocaleString()} inset faces`); }
+  else if (tubeCount != null) { bits.push(`${tubeCount.toLocaleString()} tubes`); if (hubCount) bits.push(`${hubCount.toLocaleString()} hubs`); }
+  statsEl.textContent = bits.join(' • ');
 }
-fileInput.addEventListener('change', () => { const file = fileInput.files?.[0]; if (file) loadFile(file).catch((e) => { console.error(e); setStatus(`Load failed: ${e.message || e}`); }); fileInput.value = ''; });
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files?.[0];
+  if (file) loadFile(file).catch((e) => { console.error(e); setStatus(`Load failed: ${e.message || e}`); });
+  fileInput.value = '';
+});
 exampleBtn.addEventListener('click', makeExample);
-generateBtn.addEventListener('click', generateTubes);
+generateBtn.addEventListener('click', generateResult);
 exportBtn.addEventListener('click', exportGlb);
 showSource.addEventListener('change', () => { if (sourceRoot) sourceRoot.visible = showSource.checked; });
+replaceMode.addEventListener('change', () => { updateModeUI(); updateStats(); });
 [symmetry, symmetryAxis, showSymmetryPlane].forEach((el) => el.addEventListener('change', updateSymmetryPlane));
 angle.addEventListener('input', () => angleOut.value = `${angle.value}°`);
 quadAngle.addEventListener('input', () => quadAngleOut.value = `${quadAngle.value}°`);
 sides.addEventListener('input', () => sidesOut.value = sides.value);
 hubScale.addEventListener('input', () => hubScaleOut.value = `${Number(hubScale.value).toFixed(2)}×`);
 function resize() { const w = viewport.clientWidth, h = viewport.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix(); }
-new ResizeObserver(resize).observe(viewport); resize();
+new ResizeObserver(resize).observe(viewport); resize(); updateModeUI();
 renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));
 </script>
