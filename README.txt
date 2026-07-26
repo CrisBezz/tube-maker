@@ -18,3 +18,10 @@ TRIANGULATED TUBES
 
 INSTALL / UPDATE ON GITHUB PAGES
 Replace index.html, sw.js, manifest.webmanifest and README.txt in the existing repository and commit. GitHub Pages will update automatically.
+
+WELDED TRIANGULATED-TUBE JUNCTIONS
+- Incident triangular tubes are trimmed back from shared mesh vertices.
+- Their triangular end sections are joined with a faceted convex junction hull.
+- The merged result is vertex-welded before export.
+- Junction Trim controls how far tubes are cut back before the welded junction is generated.
+- Open endpoints can still be capped independently.
