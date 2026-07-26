@@ -70,8 +70,8 @@
     <aside class="panel">
       <div class="section">
         <h2>Replacement</h2>
-        <div class="control"><label for="replaceMode">Replace with</label><select id="replaceMode"><option value="tube">Faceted tubes</option><option value="surfaceWeb">Inset surface web</option></select></div>
-        <p class="note">Inset surface web returns to the original mesh, insets each face and removes the centre, leaving one connected single-face-thick web along the mesh lines.</p>
+        <div class="control"><label for="replaceMode">Replace with</label><select id="replaceMode"><option value="tube">Faceted tubes</option><option value="surfaceWeb">Inset surface web</option><option value="triTube">Triangulated tubes</option></select></div>
+        <p class="note">Inset surface web keeps a single-face-thick web. Triangulated tubes use the two adjacent source-face planes to form a closed three-sided tube along each manifold mesh edge.</p>
       </div>
       <div class="section">
         <h2>Source topology</h2>
@@ -92,6 +92,15 @@
         <div class="control"><label for="webWidth">Web width</label><input id="webWidth" type="number" min="0.0001" step="0.01" value="0.05" inputmode="decimal" /></div>
         <label class="check"><input id="doubleSidedWeb" type="checkbox" checked /> Double-sided preview material</label>
         <p class="note">Each face is inset in its own plane. The centre opening is removed and the remaining border is welded into a single exported mesh. Width is reduced locally if a face would collapse.</p>
+      </div>
+
+      <div id="triTubeSection" class="section hidden">
+        <h2>Triangulated tubes</h2>
+        <div class="control"><label for="triTubeWidth">Tube width</label><input id="triTubeWidth" type="number" min="0.0001" step="0.01" value="0.05" inputmode="decimal" /></div>
+        <div class="control"><label for="triBoundary">Boundary edges</label><select id="triBoundary"><option value="skip">Skip open boundaries</option><option value="wedge">Create single-face wedge</option></select></div>
+        <label class="check"><input id="triCaps" type="checkbox" checked /> Cap tube endpoints</label>
+        <label class="check"><input id="triDoubleSided" type="checkbox" /> Double-sided preview material</label>
+        <p class="note">For each edge shared by exactly two faces, the original edge and two face-aligned inset lines form a triangular cross-section. Non-manifold edges are skipped and reported.</p>
       </div>
       <div class="section">
         <h2>Display</h2>
@@ -131,9 +140,10 @@ const replaceMode = $('#replaceMode');
 const edgeMode = $('#edgeMode'), angle = $('#angle'), angleOut = $('#angleOut'), quadAngle = $('#quadAngle'), quadAngleOut = $('#quadAngleOut'), unmatched = $('#unmatched'), minLength = $('#minLength');
 const diameter = $('#diameter'), sides = $('#sides'), sidesOut = $('#sidesOut'), caps = $('#caps'), showSource = $('#showSource');
 const webWidth = $('#webWidth'), doubleSidedWeb = $('#doubleSidedWeb');
+const triTubeWidth = $('#triTubeWidth'), triBoundary = $('#triBoundary'), triCaps = $('#triCaps'), triDoubleSided = $('#triDoubleSided');
 const symmetry = $('#symmetry'), symmetryAxis = $('#symmetryAxis'), symmetrySide = $('#symmetrySide'), showSymmetryPlane = $('#showSymmetryPlane');
 const junctionMode = $('#junctionMode'), hubScale = $('#hubScale'), hubScaleOut = $('#hubScaleOut'), hubDetail = $('#hubDetail');
-const tubeSection = $('#tubeSection'), webSection = $('#webSection'), junctionSection = $('#junctionSection');
+const tubeSection = $('#tubeSection'), webSection = $('#webSection'), triTubeSection = $('#triTubeSection'), junctionSection = $('#junctionSection');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 100000);
@@ -168,9 +178,11 @@ function symmetryCentre() {
 }
 function updateModeUI() {
   const web = replaceMode.value === 'surfaceWeb';
-  tubeSection.classList.toggle('hidden', web);
-  junctionSection.classList.toggle('hidden', web);
+  const triTube = replaceMode.value === 'triTube';
+  tubeSection.classList.toggle('hidden', web || triTube);
+  junctionSection.classList.toggle('hidden', web || triTube);
   webSection.classList.toggle('hidden', !web);
+  triTubeSection.classList.toggle('hidden', !triTube);
 }
 function updateSymmetryPlane() {
   if (symmetryPlaneHelper) {
@@ -689,6 +701,156 @@ function faceWebGeometry(facePoints) {
   geometry.computeVertexNormals();
   return { geometry, usedWidth: inset.usedWidth };
 }
+
+function collectTriangulatedTubeEdges() {
+  const manifold = [], boundary = [], nonManifold = [];
+  let triangleCount = 0;
+  sourceRoot?.traverse((obj) => {
+    if (!obj.isMesh || !obj.geometry?.getAttribute('position')) return;
+    const working = prepareMergedGeometry(obj.geometry);
+    const pos = working.getAttribute('position');
+    const idx = working.index;
+    if (!idx || !pos) { working.dispose(); return; }
+    const triangles = [];
+    const localEdges = new Map();
+    for (let i = 0; i < idx.count; i += 3) {
+      const ids = [idx.getX(i), idx.getX(i + 1), idx.getX(i + 2)];
+      const points = ids.map((id) => new THREE.Vector3().fromBufferAttribute(pos, id));
+      const normal = points[1].clone().sub(points[0]).cross(points[2].clone().sub(points[0])).normalize();
+      const triId = triangles.length;
+      triangles.push({ ids, points, normal });
+      triangleCount++;
+      for (let e = 0; e < 3; e++) {
+        const ia = ids[e], ib = ids[(e + 1) % 3];
+        const key = edgeIndexKey(ia, ib);
+        if (!localEdges.has(key)) localEdges.set(key, { ia: Math.min(ia, ib), ib: Math.max(ia, ib), refs: [] });
+        localEdges.get(key).refs.push({ triId, ia, ib });
+      }
+    }
+    for (const entry of localEdges.values()) {
+      const item = {
+        a: new THREE.Vector3().fromBufferAttribute(pos, entry.ia),
+        b: new THREE.Vector3().fromBufferAttribute(pos, entry.ib),
+        refs: entry.refs,
+        triangles
+      };
+      if (entry.refs.length === 2) manifold.push(item);
+      else if (entry.refs.length === 1) boundary.push(item);
+      else nonManifold.push(item);
+    }
+    working.dispose();
+  });
+  return { manifold, boundary, nonManifold, triangleCount };
+}
+function inwardDirectionForEdge(edgeA, edgeB, triangle) {
+  const tangent = edgeB.clone().sub(edgeA).normalize();
+  const midpoint = edgeA.clone().add(edgeB).multiplyScalar(0.5);
+  const centroid = triangle.points.reduce((acc,p)=>acc.add(p), new THREE.Vector3()).multiplyScalar(1/3);
+  let inward = centroid.sub(midpoint);
+  inward.addScaledVector(tangent, -inward.dot(tangent));
+  if (inward.lengthSq() < 1e-12) inward = new THREE.Vector3().crossVectors(triangle.normal, tangent);
+  return inward.normalize();
+}
+function triangularTubeGeometry(item, width, boundaryWedge = false) {
+  const a = item.a, b = item.b;
+  if (a.distanceTo(b) < Number(minLength.value || 0)) return null;
+  const tri0 = item.triangles[item.refs[0].triId];
+  const d0 = inwardDirectionForEdge(a, b, tri0);
+  let d1;
+  if (item.refs.length >= 2) {
+    const tri1 = item.triangles[item.refs[1].triId];
+    d1 = inwardDirectionForEdge(a, b, tri1);
+  } else if (boundaryWedge) {
+    const tangent = b.clone().sub(a).normalize();
+    d1 = new THREE.Vector3().crossVectors(tangent, d0).normalize();
+  } else return null;
+  const a0 = a.clone();
+  const b0 = b.clone();
+  const a1 = a.clone().addScaledVector(d0, width);
+  const b1 = b.clone().addScaledVector(d0, width);
+  const a2 = a.clone().addScaledVector(d1, width);
+  const b2 = b.clone().addScaledVector(d1, width);
+  const positions = [a0,b0,a1,b1,a2,b2].flatMap((p)=>[p.x,p.y,p.z]);
+  const indices = [
+    0,1,3, 0,3,2,
+    0,4,5, 0,5,1,
+    2,3,5, 2,5,4
+  ];
+  if (triCaps.checked) indices.push(0,2,4, 1,5,3);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+function mirrorGeometryAcrossCentre(geometry) {
+  const axisIndex = symmetryAxis.value === 'x' ? 0 : symmetryAxis.value === 'y' ? 1 : 2;
+  const c = symmetryCentre().getComponent(axisIndex);
+  const mirrored = geometry.clone();
+  const pos = mirrored.getAttribute('position');
+  for (let i=0;i<pos.count;i++) pos.setComponent(i, axisIndex, 2*c-pos.getComponent(i,axisIndex));
+  const idx = mirrored.index;
+  if (idx) {
+    for (let i=0;i<idx.count;i+=3) {
+      const t=idx.getX(i+1); idx.setX(i+1,idx.getX(i+2)); idx.setX(i+2,t);
+    }
+  }
+  pos.needsUpdate = true;
+  mirrored.computeVertexNormals();
+  return mirrored;
+}
+async function generateTriangulatedTubeResult() {
+  const data = collectTriangulatedTubeEdges();
+  const width = Number(triTubeWidth.value);
+  let candidates = [...data.manifold];
+  if (triBoundary.value === 'wedge') candidates.push(...data.boundary);
+  if (symmetry.checked) {
+    const axisIndex = symmetryAxis.value === 'x' ? 0 : symmetryAxis.value === 'y' ? 1 : 2;
+    const c = symmetryCentre().getComponent(axisIndex);
+    const positive = symmetrySide.value === 'positive';
+    candidates = candidates.filter((item) => {
+      const m = (item.a.getComponent(axisIndex) + item.b.getComponent(axisIndex)) * 0.5;
+      return positive ? m >= c : m <= c;
+    });
+  }
+  if (!candidates.length) { setStatus('No usable manifold edges found for triangulated tubes'); return; }
+  setStatus(`Generating triangulated tubes from ${candidates.length.toLocaleString()} edges…`);
+  await new Promise((resolve)=>requestAnimationFrame(resolve));
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({ color: 0xd79ae8, roughness: 0.65, metalness: 0.02, side: triDoubleSided.checked ? THREE.DoubleSide : THREE.FrontSide, flatShading: true });
+  const chunks=[];
+  const batchSize=1000;
+  let generated=0;
+  for (let start=0; start<candidates.length; start+=batchSize) {
+    const geos=[];
+    for (const item of candidates.slice(start,start+batchSize)) {
+      const g=triangularTubeGeometry(item,width,item.refs.length===1);
+      if (g) { geos.push(g); generated++; }
+    }
+    if (geos.length) {
+      const merged=mergeGeometries(geos,false);
+      geos.forEach((g)=>g.dispose());
+      if (merged) chunks.push(merged);
+    }
+    if (start % 5000 === 0) { setStatus(`Generating… ${Math.min(start+batchSize,candidates.length).toLocaleString()} / ${candidates.length.toLocaleString()}`); await new Promise((resolve)=>requestAnimationFrame(resolve)); }
+  }
+  if (!chunks.length) { setStatus('No triangulated tube geometry could be created'); return; }
+  let merged=mergeGeometries(chunks,false);
+  chunks.forEach((g)=>g.dispose());
+  if (symmetry.checked && merged) {
+    const mirrored=mirrorGeometryAcrossCentre(merged);
+    const both=mergeGeometries([merged,mirrored],false);
+    merged.dispose(); mirrored.dispose(); merged=both;
+  }
+  const welded=mergeVertices(merged,1e-6);
+  merged.dispose(); welded.computeVertexNormals();
+  resultRoot.add(new THREE.Mesh(welded,material));
+  scene.add(resultRoot); sourceRoot.visible=showSource.checked; exportBtn.disabled=false;
+  setStatus(`Generated ${generated.toLocaleString()} triangulated tubes • ${data.boundary.length.toLocaleString()} boundary edges • ${data.nonManifold.length.toLocaleString()} non-manifold edges skipped${symmetry.checked ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}`);
+  updateStats(0,0,0,generated);
+}
+
 async function generateTubeResult() {
   const result = collectEdges();
   const symmetryResult = applySymmetryToEdges(result.edges);
@@ -780,6 +942,7 @@ async function generateResult() {
   generateBtn.disabled = true;
   try {
     if (replaceMode.value === 'surfaceWeb') await generateSurfaceWebResult();
+    else if (replaceMode.value === 'triTube') await generateTriangulatedTubeResult();
     else await generateTubeResult();
   } catch (error) {
     console.error(error);
@@ -792,7 +955,7 @@ function exportGlb() {
   if (!resultRoot) return;
   exportBtn.disabled = true;
   setStatus('Preparing GLB…');
-  const suffix = replaceMode.value === 'surfaceWeb' ? 'surface-web' : 'tubes';
+  const suffix = replaceMode.value === 'surfaceWeb' ? 'surface-web' : (replaceMode.value === 'triTube' ? 'triangulated-tubes' : 'tubes');
   new GLTFExporter().parse(resultRoot, (result) => {
     const blob = new Blob([result], { type: 'model/gltf-binary' });
     const url = URL.createObjectURL(blob);
@@ -816,11 +979,12 @@ function makeExample() {
   group.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 1.1, 1, 1, 1)));
   sourceName = 'surface-web-example'; originalObjQuadEdges = null; originalObjQuadFaces = null; edgeMode.value = 'quads'; setSource(normaliseImported(group)); setStatus('Example model loaded');
 }
-function updateStats(tubeCount = null, hubCount = 0, webFaces = 0) {
+function updateStats(tubeCount = null, hubCount = 0, webFaces = 0, triTubeCount = 0) {
   let sourceTriangles = 0;
   sourceRoot?.traverse((obj) => { if (obj.isMesh) sourceTriangles += obj.geometry.index ? obj.geometry.index.count / 3 : obj.geometry.getAttribute('position').count / 3; });
   const bits = [`${Math.round(sourceTriangles).toLocaleString()} triangles`];
   if (replaceMode.value === 'surfaceWeb') { if (webFaces) bits.push(`${webFaces.toLocaleString()} inset faces`); }
+  else if (replaceMode.value === 'triTube') { if (triTubeCount) bits.push(`${triTubeCount.toLocaleString()} triangular tubes`); }
   else if (tubeCount != null) { bits.push(`${tubeCount.toLocaleString()} tubes`); if (hubCount) bits.push(`${hubCount.toLocaleString()} hubs`); }
   statsEl.textContent = bits.join(' • ');
 }
