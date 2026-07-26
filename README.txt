@@ -27,3 +27,11 @@ NOTES
 - Every resulting edge becomes a separate cylinder. Junctions overlap and are not welded.
 - Quad reconstruction is inferred. Regular architectural and subdivision meshes work best. Irregular triangulations may need a lower matching angle or unmatched triangles set to Ignore.
 - Very dense models can exceed iPad memory. Increase Minimum Length or simplify the source mesh first.
+
+NEW SYMMETRY MODE
+- Enable Make generated tubes symmetrical.
+- Choose the X, Y or Z centre plane.
+- Choose which positive or negative half of the source mesh is authoritative.
+- The app keeps that half and mirrors it across the bounding-box centre plane.
+- Centre-line edges are generated only once.
+- The translucent centre-plane preview can be hidden.
