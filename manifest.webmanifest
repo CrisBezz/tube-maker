@@ -1,7 +1,7 @@
 {
   "name": "Mesh Line Replacer",
   "short_name": "Mesh Replacer",
-  "description": "Convert mesh lines into faceted tubes, inset surface webs or triangulated tubes on iPad.",
+  "description": "Convert mesh lines into tubes or inset surface-web meshes on iPad.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#111318",
