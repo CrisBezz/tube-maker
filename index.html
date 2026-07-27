@@ -158,8 +158,8 @@
         <label class="check"><input id="triCaps" type="checkbox" checked /> Cap open endpoints</label>
         <label class="check"><input id="triDoubleSided" type="checkbox" /> Double-sided preview material</label>
         <p class="note">
-          The three longitudinal tube edges meet directly at shared source and face-inset nodes.
-          There is no faceted junction hull. All coincident end vertices are welded into one mesh.
+          The three longitudinal tube edges meet at shared source and face-inset nodes.
+          Multi-edge nodes are enclosed by a faceted convex junction hull, then everything is welded into one mesh.
         </p>
       </div>
 
@@ -180,6 +180,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const $ = (s) => document.querySelector(s);
@@ -688,13 +689,38 @@ function triangularTubeGeometry(item, triangles, width, insetCache, capA, capB) 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setIndex(indices);
-  return geometry;
+  return { geometry, start, end };
+}
+
+function junctionHullGeometry(points, nodePoint) {
+  const unique = new Map();
+
+  const addPoint = (point) => {
+    const key = `${point.x.toPrecision(8)},${point.y.toPrecision(8)},${point.z.toPrecision(8)}`;
+    if (!unique.has(key)) unique.set(key, point.clone());
+  };
+
+  points.forEach(addPoint);
+  addPoint(nodePoint);
+
+  const hullPoints = [...unique.values()];
+  if (hullPoints.length < 4) return null;
+
+  try {
+    const geometry = new ConvexGeometry(hullPoints);
+    geometry.computeVertexNormals();
+    return geometry;
+  } catch (error) {
+    console.warn('Junction hull could not be created', error);
+    return null;
+  }
 }
 
 async function generateTriangulatedTubes(topology) {
   const width = Number(triTubeWidth.value);
   const geometries = [];
   let count = 0;
+  let junctionCount = 0;
   let boundaryCount = 0;
   let nonManifoldCount = 0;
 
@@ -708,6 +734,13 @@ async function generateTriangulatedTubes(topology) {
     }
 
     const insetCache = new Map();
+    const nodeSections = new Map();
+
+    const registerSection = (vertexId, section) => {
+      if ((nodeDegree.get(vertexId) || 0) < 2) return;
+      if (!nodeSections.has(vertexId)) nodeSections.set(vertexId, []);
+      nodeSections.get(vertexId).push(...section);
+    };
 
     for (const entry of data.edges.values()) {
       if (entry.refs.length > 2) {
@@ -730,13 +763,24 @@ async function generateTriangulatedTubes(topology) {
 
       const capA = triCaps.checked && (nodeDegree.get(entry.ia) === 1);
       const capB = triCaps.checked && (nodeDegree.get(entry.ib) === 1);
-      const geometry = triangularTubeGeometry(
+      const built = triangularTubeGeometry(
         item, data.triangles, width, insetCache, capA, capB
       );
 
-      if (geometry) {
-        geometries.push(geometry);
+      if (built) {
+        geometries.push(built.geometry);
+        registerSection(entry.ia, built.start);
+        registerSection(entry.ib, built.end);
         count++;
+      }
+    }
+
+    for (const [vertexId, points] of nodeSections) {
+      const nodePoint = new THREE.Vector3().fromBufferAttribute(pos, vertexId);
+      const hull = junctionHullGeometry(points, nodePoint);
+      if (hull) {
+        geometries.push(hull);
+        junctionCount++;
       }
     }
   }
@@ -750,13 +794,9 @@ async function generateTriangulatedTubes(topology) {
   if (!merged) throw new Error('Could not merge triangulated tube geometry');
 
   /*
-   * This is the junction operation:
-   * - every tube endpoint uses the exact original source vertex;
-   * - every face-side endpoint uses the exact inset corner for that source face;
-   * - therefore adjacent tube strips meet at identical coordinates;
-   * - mergeVertices welds those coincident nodes into one indexed mesh.
-   *
-   * No convex hull, sphere, hub or extra junction object is created.
+   * Junction hulls and tube bodies are merged into one geometry.
+   * mergeVertices performs the final positional weld so the GLB exports
+   * as one indexed mesh object rather than separate tube and hull meshes.
    */
   const welded = mergeVertices(merged, 1e-5);
   merged.dispose();
@@ -774,7 +814,7 @@ async function generateTriangulatedTubes(topology) {
 
   return {
     label:
-      `${count.toLocaleString()} directly welded triangular tubes • single mesh` +
+      `${count.toLocaleString()} triangular tubes • ${junctionCount.toLocaleString()} faceted junction hulls • single welded mesh` +
       ` • ${boundaryCount.toLocaleString()} boundary edges` +
       ` • ${nonManifoldCount.toLocaleString()} non-manifold edges skipped`,
     count
@@ -799,7 +839,7 @@ async function generateResult() {
       setStatus('Generating inset surface web…');
       result = await generateSurfaceWeb(topology);
     } else if (replaceMode.value === 'triTube') {
-      setStatus('Generating directly welded triangulated tubes…');
+      setStatus('Generating triangulated tubes and faceted junction hulls…');
       result = await generateTriangulatedTubes(topology);
     } else {
       setStatus('Generating faceted tubes…');

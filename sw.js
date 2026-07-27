@@ -1,5 +1,5 @@
 \
-const CACHE = 'mesh-line-replacer-v10-direct-node-weld';
+const CACHE = 'mesh-line-replacer-v11-faceted-junction-hulls';
 
 const APP_SHELL = [
   './',
