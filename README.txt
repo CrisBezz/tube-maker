@@ -32,3 +32,12 @@ VERSION HISTORY
 - v0.3.0 — Symmetry
 - v0.2.0 — Quad reconstruction
 - v0.1.0 — First tube generator
+
+
+VERSION 0.7.1
+- Replaces averaged-normal solidify with per-face offsets.
+- Adds outer and inner bevel faces along shared edges.
+- Adds triangulated junction caps.
+- Removes duplicate and degenerate triangles.
+- Welds vertices and unifies outward normals.
+- Validates boundary and non-manifold edge counts before export.
