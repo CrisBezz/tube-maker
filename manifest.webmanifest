@@ -1,7 +1,8 @@
 {
   "name": "Mesh Line Replacer",
   "short_name": "Mesh Replacer",
-  "description": "Convert mesh lines into tubes or inset surface-web meshes on iPad.",
+  "version": "0.7.0",
+  "description": "Convert mesh lines into tubes, inset webs or closed solid surface webs on iPad.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#111318",

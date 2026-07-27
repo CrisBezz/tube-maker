@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tube Maker" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <title>Mesh Line Replacer</title>
+  <title>Mesh Line Replacer v0.7.0</title>
   <style>
     :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f4f5f7; background: #111318; color-scheme: dark; }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -36,6 +36,17 @@
     .check input { width: 22px; height: 22px; }
     .note { margin: 0; color: #c6cad2; line-height: 1.5; }
     .status { padding: 9px 12px max(9px, env(safe-area-inset-bottom)); background: #191c22; border-top: 1px solid #30343d; color: #b8bdc8; font-size: 13px; display: flex; justify-content: space-between; gap: 12px; }
+    .status-right { display: flex; align-items: center; justify-content: flex-end; gap: 18px; white-space: nowrap; }
+    .version { color: #d7dae1; font-weight: 700; }
+    dialog { width: min(560px, calc(100vw - 30px)); max-height: min(760px, calc(100vh - 40px)); overflow: auto; border: 1px solid #434955; border-radius: 18px; padding: 0; color: #f4f5f7; background: #20232a; box-shadow: 0 24px 80px rgba(0,0,0,.55); }
+    dialog::backdrop { background: rgba(5,7,10,.72); backdrop-filter: blur(4px); }
+    .about-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px; background: #20232a; border-bottom: 1px solid #373c46; }
+    .about-head h2 { margin: 0; font-size: 21px; }
+    .about-body { padding: 20px; line-height: 1.55; }
+    .about-body h3 { margin: 22px 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: #aeb4c0; }
+    .about-body ul { margin: 8px 0 0; padding-left: 22px; }
+    .about-body li { margin: 7px 0; }
+    .about-version { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #30343d; font-weight: 800; }
     @media (max-width: 820px) {
       .title { display: none; }
       .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(48vh, 1fr) auto; overflow: auto; }
@@ -62,6 +73,7 @@
     <button id="exampleBtn" class="secondary">Example</button>
     <button id="generateBtn" disabled>Generate</button>
     <button id="exportBtn" class="secondary" disabled>Export GLB</button>
+    <button id="aboutBtn" class="secondary">About</button>
   </header>
   <main class="workspace">
     <section id="viewport" class="viewport">
@@ -70,8 +82,8 @@
     <aside class="panel">
       <div class="section">
         <h2>Replacement</h2>
-        <div class="control"><label for="replaceMode">Replace with</label><select id="replaceMode"><option value="tube">Faceted tubes</option><option value="surfaceWeb">Inset surface web</option></select></div>
-        <p class="note">Inset surface web returns to the original mesh, insets each face and removes the centre, leaving one connected single-face-thick web along the mesh lines.</p>
+        <div class="control"><label for="replaceMode">Replace with</label><select id="replaceMode"><option value="tube">Faceted tubes</option><option value="surfaceWeb">Inset surface web</option><option value="solidWeb">Solid surface web</option></select></div>
+        <p class="note">Inset surface web creates a single-face-thick web. Solid surface web adds thickness, bridges every boundary loop and retains the openings through the mesh.</p>
       </div>
       <div class="section">
         <h2>Source topology</h2>
@@ -93,6 +105,13 @@
         <label class="check"><input id="doubleSidedWeb" type="checkbox" checked /> Double-sided preview material</label>
         <p class="note">Each face is inset in its own plane. The centre opening is removed and the remaining border is welded into a single exported mesh. Width is reduced locally if a face would collapse.</p>
       </div>
+      <div id="solidWebSection" class="section hidden">
+        <h2>Solid surface web</h2>
+        <div class="control"><label for="solidThickness">Solid thickness</label><input id="solidThickness" type="number" min="0.0001" step="0.01" value="0.02" inputmode="decimal" /></div>
+        <div class="control"><label for="solidDirection">Offset direction</label><select id="solidDirection"><option value="centred">Centred</option><option value="outward">Outward</option><option value="inward">Inward</option></select></div>
+        <label class="check"><input id="autoLimitThickness" type="checkbox" checked /> Auto-limit thickness on short edges</label>
+        <p class="note">The inset web is duplicated and offset along averaged vertex normals. All open boundaries, including hole boundaries, are bridged to create one closed mesh while keeping the openings clear.</p>
+      </div>
       <div class="section">
         <h2>Display</h2>
         <label class="check"><input id="showSource" type="checkbox" checked /> Show source model</label>
@@ -113,8 +132,28 @@
       </div>
     </aside>
   </main>
-  <footer class="status"><span id="status">Ready</span><span id="stats"></span></footer>
+  <footer class="status"><span id="status">Ready</span><span class="status-right"><span id="stats"></span><span class="version">v0.7.0</span></span></footer>
 </div>
+<dialog id="aboutDialog">
+  <div class="about-head"><h2>Mesh Line Replacer</h2><button id="closeAboutBtn" class="secondary">Close</button></div>
+  <div class="about-body">
+    <span class="about-version">Version 0.7.0</span>
+    <p>A touch-friendly Safari modelling utility for iPad. Imported models are processed locally on the device.</p>
+    <h3>Current tools</h3>
+    <ul><li>Faceted Tubes</li><li>Inset Surface Web</li><li>Solid Surface Web</li><li>Quad reconstruction and original OBJ quad support</li><li>Symmetry and GLB export</li></ul>
+    <h3>Version history</h3>
+    <ul>
+      <li><strong>v0.7.0</strong> — Solid Surface Web</li>
+      <li><strong>v0.6.0</strong> — Stable Surface Web release</li>
+      <li><strong>v0.5.0</strong> — Inset Surface Web</li>
+      <li><strong>v0.4.0</strong> — Mitred and welded tube junctions</li>
+      <li><strong>v0.3.0</strong> — Symmetry</li>
+      <li><strong>v0.2.0</strong> — Quad reconstruction</li>
+      <li><strong>v0.1.0</strong> — First tube generator</li>
+    </ul>
+    <p>Built for Safari on iPad · © 2026</p>
+  </div>
+</dialog>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -127,13 +166,15 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 const $ = (s) => document.querySelector(s);
 const viewport = $('#viewport'), hint = $('#hint'), statusEl = $('#status'), statsEl = $('#stats');
 const fileInput = $('#fileInput'), generateBtn = $('#generateBtn'), exportBtn = $('#exportBtn'), exampleBtn = $('#exampleBtn');
+const aboutBtn = $('#aboutBtn'), aboutDialog = $('#aboutDialog'), closeAboutBtn = $('#closeAboutBtn');
 const replaceMode = $('#replaceMode');
 const edgeMode = $('#edgeMode'), angle = $('#angle'), angleOut = $('#angleOut'), quadAngle = $('#quadAngle'), quadAngleOut = $('#quadAngleOut'), unmatched = $('#unmatched'), minLength = $('#minLength');
 const diameter = $('#diameter'), sides = $('#sides'), sidesOut = $('#sidesOut'), caps = $('#caps'), showSource = $('#showSource');
 const webWidth = $('#webWidth'), doubleSidedWeb = $('#doubleSidedWeb');
+const solidThickness = $('#solidThickness'), solidDirection = $('#solidDirection'), autoLimitThickness = $('#autoLimitThickness');
 const symmetry = $('#symmetry'), symmetryAxis = $('#symmetryAxis'), symmetrySide = $('#symmetrySide'), showSymmetryPlane = $('#showSymmetryPlane');
 const junctionMode = $('#junctionMode'), hubScale = $('#hubScale'), hubScaleOut = $('#hubScaleOut'), hubDetail = $('#hubDetail');
-const tubeSection = $('#tubeSection'), webSection = $('#webSection'), junctionSection = $('#junctionSection');
+const tubeSection = $('#tubeSection'), webSection = $('#webSection'), solidWebSection = $('#solidWebSection'), junctionSection = $('#junctionSection');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 100000);
@@ -159,6 +200,8 @@ let sourceName = 'mesh-line-replacer';
 let originalObjQuadEdges = null;
 let originalObjQuadFaces = null;
 let symmetryPlaneHelper = null;
+let outputMetrics = { faces: 0, holes: 0, exported: false };
+const APP_VERSION = '0.7.0';
 
 function setStatus(message) { statusEl.textContent = message; }
 function sourceBounds() { return sourceRoot ? new THREE.Box3().setFromObject(sourceRoot) : new THREE.Box3(); }
@@ -167,10 +210,12 @@ function symmetryCentre() {
   return box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
 }
 function updateModeUI() {
-  const web = replaceMode.value === 'surfaceWeb';
+  const web = replaceMode.value === 'surfaceWeb' || replaceMode.value === 'solidWeb';
+  const solid = replaceMode.value === 'solidWeb';
   tubeSection.classList.toggle('hidden', web);
   junctionSection.classList.toggle('hidden', web);
   webSection.classList.toggle('hidden', !web);
+  solidWebSection.classList.toggle('hidden', !solid);
 }
 function updateSymmetryPlane() {
   if (symmetryPlaneHelper) {
@@ -294,7 +339,7 @@ async function loadFile(file) {
 function setSource(group) {
   disposeObject(sourceRoot); disposeObject(resultRoot);
   resultRoot = null; sourceRoot = group; scene.add(group); fitCamera(group);
-  hint.classList.add('hidden'); generateBtn.disabled = false; exportBtn.disabled = true; updateStats(); updateSymmetryPlane();
+  hint.classList.add('hidden'); generateBtn.disabled = false; exportBtn.disabled = true; outputMetrics = { faces: 0, holes: 0, exported: false }; updateStats(); updateSymmetryPlane();
 }
 function addEdge(map, a, b) {
   const keyFor = (v) => `${v.x.toPrecision(9)},${v.y.toPrecision(9)},${v.z.toPrecision(9)}`;
@@ -724,7 +769,162 @@ async function generateTubeResult() {
   scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
   const modeLabel = junctionMode.options[junctionMode.selectedIndex].text;
   setStatus(`Generated ${edges.length.toLocaleString()} tubes • ${modeLabel}${junctionData.hubs.length ? ` • ${junctionData.hubs.length.toLocaleString()} welded hubs` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${result.info ? ` • ${result.info}` : ''}`);
-  updateStats(edges.length, junctionData.hubs.length, 0);
+  updateStats(edges.length, junctionData.hubs.length, 0, false, 0, resultRoot.children[0]?.geometry);
+}
+
+function buildInsetWebGeometry(faces) {
+  const geometries = [];
+  let usedFaces = 0, limitedFaces = 0;
+  const requestedWidth = Number(webWidth.value);
+  for (const face of faces) {
+    const built = faceWebGeometry(face);
+    if (!built) continue;
+    usedFaces++;
+    if (built.usedWidth < requestedWidth * 0.999) limitedFaces++;
+    geometries.push(built.geometry);
+  }
+  if (!geometries.length) return { geometry: null, usedFaces, limitedFaces };
+  const merged = mergeGeometries(geometries, false);
+  geometries.forEach((g) => g.dispose());
+  if (!merged) return { geometry: null, usedFaces, limitedFaces };
+  const welded = mergeVertices(merged, 1e-6);
+  merged.dispose();
+  welded.computeVertexNormals();
+  return { geometry: welded, usedFaces, limitedFaces };
+}
+function countGeometryFaces(geometry) {
+  if (!geometry) return 0;
+  return geometry.index ? Math.floor(geometry.index.count / 3) : Math.floor((geometry.getAttribute('position')?.count || 0) / 3);
+}
+function countBoundaryLoops(geometry) {
+  if (!geometry) return 0;
+  let working = geometry.index ? geometry : mergeVertices(geometry.clone(), 1e-6);
+  const index = working.index;
+  if (!index) { if (working !== geometry) working.dispose(); return 0; }
+  const edgeUse = new Map();
+  for (let i = 0; i < index.count; i += 3) {
+    const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+    for (let e = 0; e < 3; e++) {
+      const a = tri[e], b = tri[(e + 1) % 3];
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (!edgeUse.has(key)) edgeUse.set(key, { count: 0, a, b });
+      edgeUse.get(key).count++;
+    }
+  }
+  const adjacency = new Map();
+  const link = (a,b) => { if (!adjacency.has(a)) adjacency.set(a,new Set()); adjacency.get(a).add(b); };
+  for (const edge of edgeUse.values()) if (edge.count === 1) { link(edge.a,edge.b); link(edge.b,edge.a); }
+  const visited = new Set();
+  let loops = 0;
+  for (const start of adjacency.keys()) {
+    if (visited.has(start)) continue;
+    loops++;
+    const stack=[start]; visited.add(start);
+    while (stack.length) {
+      const v=stack.pop();
+      for (const n of adjacency.get(v) || []) if (!visited.has(n)) { visited.add(n); stack.push(n); }
+    }
+  }
+  if (working !== geometry) working.dispose();
+  return loops;
+}
+function setOutputMetrics({ faces = outputMetrics.faces, holes = outputMetrics.holes, exported = outputMetrics.exported } = {}) {
+  outputMetrics = { faces, holes, exported };
+  const bits = [];
+  if (faces) bits.push(`${faces.toLocaleString()} faces`);
+  if (holes) bits.push(`${holes.toLocaleString()} ${holes === 1 ? 'hole' : 'holes'}`);
+  if (exported) bits.push('Exported');
+  statsEl.textContent = bits.join(' • ');
+}
+function solidifySurfaceGeometry(surfaceGeometry) {
+  let base = surfaceGeometry.index ? surfaceGeometry.clone() : mergeVertices(surfaceGeometry.clone(), 1e-6);
+  if (!base.index) base = mergeVertices(base, 1e-6);
+  base.computeVertexNormals();
+  const pos = base.getAttribute('position');
+  const normal = base.getAttribute('normal');
+  const index = base.index;
+  if (!pos || !normal || !index) { base.dispose(); return null; }
+  let thickness = Math.max(Number(solidThickness.value), 1e-7);
+  if (autoLimitThickness.checked) {
+    let minEdge = Infinity;
+    const seen = new Set();
+    for (let i=0; i<index.count; i+=3) {
+      const tri=[index.getX(i),index.getX(i+1),index.getX(i+2)];
+      for (let e=0;e<3;e++) {
+        const a=tri[e], b=tri[(e+1)%3], key=a<b?`${a}|${b}`:`${b}|${a}`;
+        if (seen.has(key)) continue; seen.add(key);
+        const va=new THREE.Vector3().fromBufferAttribute(pos,a), vb=new THREE.Vector3().fromBufferAttribute(pos,b);
+        minEdge=Math.min(minEdge,va.distanceTo(vb));
+      }
+    }
+    if (Number.isFinite(minEdge)) thickness=Math.min(thickness,minEdge*0.45);
+  }
+  let frontOffset=thickness*0.5, backOffset=-thickness*0.5;
+  if (solidDirection.value==='outward') { frontOffset=thickness; backOffset=0; }
+  else if (solidDirection.value==='inward') { frontOffset=0; backOffset=-thickness; }
+  const positions=[];
+  for (let i=0;i<pos.count;i++) {
+    const p=new THREE.Vector3().fromBufferAttribute(pos,i);
+    const n=new THREE.Vector3().fromBufferAttribute(normal,i).normalize();
+    const q=p.clone().addScaledVector(n,frontOffset); positions.push(q.x,q.y,q.z);
+  }
+  for (let i=0;i<pos.count;i++) {
+    const p=new THREE.Vector3().fromBufferAttribute(pos,i);
+    const n=new THREE.Vector3().fromBufferAttribute(normal,i).normalize();
+    const q=p.clone().addScaledVector(n,backOffset); positions.push(q.x,q.y,q.z);
+  }
+  const indices=[];
+  for (let i=0;i<index.count;i+=3) {
+    const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);
+    indices.push(a,b,c);
+    indices.push(pos.count+c,pos.count+b,pos.count+a);
+  }
+  const edgeUse=new Map();
+  for (let i=0;i<index.count;i+=3) {
+    const tri=[index.getX(i),index.getX(i+1),index.getX(i+2)];
+    for (let e=0;e<3;e++) {
+      const a=tri[e],b=tri[(e+1)%3],key=a<b?`${a}|${b}`:`${b}|${a}`;
+      if (!edgeUse.has(key)) edgeUse.set(key,{count:0,a,b});
+      edgeUse.get(key).count++;
+    }
+  }
+  let boundaryEdges=0, nonManifoldEdges=0;
+  for (const edge of edgeUse.values()) {
+    if (edge.count===1) {
+      boundaryEdges++;
+      const a=edge.a,b=edge.b,af=a,bf=b,ab=pos.count+a,bb=pos.count+b;
+      indices.push(af,bf,bb,af,bb,ab);
+    } else if (edge.count>2) nonManifoldEdges++;
+  }
+  const result=new THREE.BufferGeometry();
+  result.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  result.setIndex(indices);
+  const welded=mergeVertices(result,1e-6); result.dispose();
+  welded.computeVertexNormals();
+  base.dispose();
+  return { geometry:welded, thickness, boundaryEdges, nonManifoldEdges };
+}
+async function generateSolidWebResult() {
+  const facesResult = collectFaces();
+  const symmetryResult = applySymmetryToFaces(facesResult.faces);
+  const faces = symmetryResult.faces;
+  if (!faces.length) { setStatus('No usable source faces were found for the solid surface web'); return; }
+  if (faces.length > 50000 && !confirm(`This model has ${faces.length.toLocaleString()} faces. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
+  setStatus(`Generating solid surface web from ${faces.length.toLocaleString()} faces…`);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  const built = buildInsetWebGeometry(faces);
+  if (!built.geometry) { setStatus('No valid inset faces could be created. Try a smaller web width.'); return; }
+  const holeCount = countBoundaryLoops(built.geometry);
+  const solid = solidifySurfaceGeometry(built.geometry);
+  built.geometry.dispose();
+  if (!solid?.geometry) { setStatus('Failed to solidify the inset web.'); return; }
+  const material = new THREE.MeshStandardMaterial({ color: 0x78c7a0, roughness: 0.7, metalness: 0.03, side: THREE.FrontSide, flatShading: false });
+  resultRoot.add(new THREE.Mesh(solid.geometry, material));
+  scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
+  setStatus(`Generated solid surface web • ${built.usedFaces.toLocaleString()} faces used${built.limitedFaces ? ` • ${built.limitedFaces.toLocaleString()} web widths auto-limited` : ''} • ${solid.boundaryEdges.toLocaleString()} boundary edges bridged${solid.nonManifoldEdges ? ` • ${solid.nonManifoldEdges.toLocaleString()} non-manifold edges detected` : ''} • thickness ${solid.thickness.toPrecision(4)}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${facesResult.info ? ` • ${facesResult.info}` : ''}`);
+  updateStats(0,0,built.usedFaces,true,holeCount,solid.geometry);
 }
 async function generateSurfaceWebResult() {
   const facesResult = collectFaces();
@@ -773,13 +973,14 @@ async function generateSurfaceWebResult() {
   resultRoot.add(new THREE.Mesh(welded, material));
   scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
   setStatus(`Generated inset surface web • ${usedFaces.toLocaleString()} faces used${limitedFaces ? ` • ${limitedFaces.toLocaleString()} auto-limited` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${facesResult.info ? ` • ${facesResult.info}` : ''}`);
-  updateStats(0, 0, usedFaces);
+  updateStats(0, 0, usedFaces, false, countBoundaryLoops(welded), welded);
 }
 async function generateResult() {
   if (!sourceRoot) return;
   generateBtn.disabled = true;
   try {
     if (replaceMode.value === 'surfaceWeb') await generateSurfaceWebResult();
+    else if (replaceMode.value === 'solidWeb') await generateSolidWebResult();
     else await generateTubeResult();
   } catch (error) {
     console.error(error);
@@ -792,7 +993,7 @@ function exportGlb() {
   if (!resultRoot) return;
   exportBtn.disabled = true;
   setStatus('Preparing GLB…');
-  const suffix = replaceMode.value === 'surfaceWeb' ? 'surface-web' : 'tubes';
+  const suffix = replaceMode.value === 'surfaceWeb' ? 'surface-web' : replaceMode.value === 'solidWeb' ? 'solid-surface-web' : 'tubes';
   new GLTFExporter().parse(resultRoot, (result) => {
     const blob = new Blob([result], { type: 'model/gltf-binary' });
     const url = URL.createObjectURL(blob);
@@ -804,6 +1005,7 @@ function exportGlb() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
     setStatus('GLB exported');
+    setOutputMetrics({ exported: true });
     exportBtn.disabled = false;
   }, (error) => {
     console.error(error);
@@ -816,13 +1018,13 @@ function makeExample() {
   group.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 1.1, 1, 1, 1)));
   sourceName = 'surface-web-example'; originalObjQuadEdges = null; originalObjQuadFaces = null; edgeMode.value = 'quads'; setSource(normaliseImported(group)); setStatus('Example model loaded');
 }
-function updateStats(tubeCount = null, hubCount = 0, webFaces = 0) {
-  let sourceTriangles = 0;
-  sourceRoot?.traverse((obj) => { if (obj.isMesh) sourceTriangles += obj.geometry.index ? obj.geometry.index.count / 3 : obj.geometry.getAttribute('position').count / 3; });
-  const bits = [`${Math.round(sourceTriangles).toLocaleString()} triangles`];
-  if (replaceMode.value === 'surfaceWeb') { if (webFaces) bits.push(`${webFaces.toLocaleString()} inset faces`); }
-  else if (tubeCount != null) { bits.push(`${tubeCount.toLocaleString()} tubes`); if (hubCount) bits.push(`${hubCount.toLocaleString()} hubs`); }
-  statsEl.textContent = bits.join(' • ');
+function updateStats(tubeCount = null, hubCount = 0, webFaces = 0, solid = false, holes = 0, geometry = null) {
+  let faceCount = geometry ? countGeometryFaces(geometry) : 0;
+  if (!faceCount && webFaces) faceCount = webFaces;
+  if (!faceCount && tubeCount != null) {
+    resultRoot?.traverse((obj) => { if (obj.isMesh) faceCount += countGeometryFaces(obj.geometry); });
+  }
+  setOutputMetrics({ faces: faceCount, holes, exported: false });
 }
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
@@ -830,6 +1032,9 @@ fileInput.addEventListener('change', () => {
   fileInput.value = '';
 });
 exampleBtn.addEventListener('click', makeExample);
+aboutBtn.addEventListener('click', () => aboutDialog.showModal());
+closeAboutBtn.addEventListener('click', () => aboutDialog.close());
+aboutDialog.addEventListener('click', (event) => { if (event.target === aboutDialog) aboutDialog.close(); });
 generateBtn.addEventListener('click', generateResult);
 exportBtn.addEventListener('click', exportGlb);
 showSource.addEventListener('change', () => { if (sourceRoot) sourceRoot.visible = showSource.checked; });
