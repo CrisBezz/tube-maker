@@ -1,8 +1,8 @@
 {
   "name": "Mesh Line Replacer",
   "short_name": "Mesh Replacer",
-  "version": "0.8.3",
-  "description": "Convert mesh lines into tubes, inset webs, solid webs or shared torus instances on iPad.",
+  "version": "0.8.4",
+  "description": "Convert mesh lines into tubes, inset webs, solid webs or Nomad-compatible shared torus nodes on iPad.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#111318",
