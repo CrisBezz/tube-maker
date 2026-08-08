@@ -1,0 +1,216 @@
+    const a = a0.clone(), b = b0.clone();
+    add(a,b);
+    const aOn = Math.abs(a.getComponent(axisIndex)-c) <= tolerance;
+    const bOn = Math.abs(b.getComponent(axisIndex)-c) <= tolerance;
+    if (aOn && bOn) continue;
+    const ma = a.clone(), mb = b.clone();
+    ma.setComponent(axisIndex, 2*c - ma.getComponent(axisIndex));
+    mb.setComponent(axisIndex, 2*c - mb.getComponent(axisIndex));
+    add(ma,mb);
+  }
+  return { edges: [...kept.values()], mirrored: true, centre };
+}
+function applySymmetryToFaces(faces) {
+  if (!symmetry.checked || !sourceRoot) return { faces, mirrored: false, centre: null };
+  const axis = symmetryAxis.value;
+  const axisIndex = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+  const centre = symmetryCentre();
+  const c = centre.getComponent(axisIndex);
+  const box = sourceBounds();
+  const span = box.getSize(new THREE.Vector3()).getComponent(axisIndex);
+  const tolerance = Math.max(span * 1e-7, 1e-7);
+  const positive = symmetrySide.value === 'positive';
+  const result = [];
+  for (const face0 of faces) {
+    const centroid = face0.reduce((acc,p)=>acc.add(p), new THREE.Vector3()).multiplyScalar(1/face0.length);
+    if ((positive && centroid.getComponent(axisIndex) < c - tolerance) || (!positive && centroid.getComponent(axisIndex) > c + tolerance)) continue;
+    const face = face0.map((p)=>p.clone());
+    result.push(face);
+    if (face.every((p) => Math.abs(p.getComponent(axisIndex) - c) <= tolerance)) continue;
+    const mirrored = face.map((p) => {
+      const q = p.clone();
+      q.setComponent(axisIndex, 2*c - q.getComponent(axisIndex));
+      return q;
+    }).reverse();
+    result.push(mirrored);
+  }
+  return { faces: result, mirrored: true, centre };
+}
+function vertexKey(v) { return `${v.x.toPrecision(9)},${v.y.toPrecision(9)},${v.z.toPrecision(9)}`; }
+function buildJunctionData(edges) {
+  const nodes = new Map();
+  const register = (point, edgeIndex, endpoint) => {
+    const key = vertexKey(point);
+    if (!nodes.has(key)) nodes.set(key, { point: point.clone(), refs: [] });
+    nodes.get(key).refs.push({ edgeIndex, endpoint });
+  };
+  edges.forEach(([a,b], i) => { register(a,i,0); register(b,i,1); });
+  const cuts = edges.map(() => [null, null]);
+  const hubs = [];
+  const mode = junctionMode.value;
+  for (const node of nodes.values()) {
+    const degree = node.refs.length;
+    const directions = node.refs.map((ref) => edges[ref.edgeIndex][1-ref.endpoint].clone().sub(node.point).normalize());
+    if ((mode === 'mitre' || mode === 'hybrid') && degree === 2) {
+      const d0 = directions[0], d1 = directions[1];
+      const dot = THREE.MathUtils.clamp(d0.dot(d1), -1, 1);
+      const turnAngle = Math.acos(dot);
+      if (turnAngle > THREE.MathUtils.degToRad(8)) {
+        const n0 = d0.clone().sub(d1).normalize();
+        const n1 = d1.clone().sub(d0).normalize();
+        if (Math.abs(n0.dot(d0)) > 0.12 && Math.abs(n1.dot(d1)) > 0.12) {
+          cuts[node.refs[0].edgeIndex][node.refs[0].endpoint] = n0;
+          cuts[node.refs[1].edgeIndex][node.refs[1].endpoint] = n1;
+        }
+      }
+    }
+    if ((mode === 'hubs' || mode === 'hybrid') && degree >= 3) hubs.push({ point: node.point.clone(), degree });
+    if (mode === 'hubs' && degree === 2) hubs.push({ point: node.point.clone(), degree });
+  }
+  return { cuts, hubs };
+}
+function makeBasis(axis) {
+  const helper = Math.abs(axis.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+  const u = new THREE.Vector3().crossVectors(axis, helper).normalize();
+  const v = new THREE.Vector3().crossVectors(axis, u).normalize();
+  return {u,v};
+}
+function facetedTubeForEdge(a, b, cutA = null, cutB = null) {
+  const axis = b.clone().sub(a);
+  const length = axis.length();
+  axis.normalize();
+  const radialSegments = Number(sides.value);
+  const radius = Number(diameter.value) / 2;
+  const {u,v} = makeBasis(axis);
+  const positions = [];
+  const indices = [];
+  const maxShift = Math.min(length * 0.42, radius * 5);
+  const ringPoint = (origin, normal, radial) => {
+    if (!normal || Math.abs(normal.dot(axis)) < 0.12) return origin.clone().add(radial);
+    let shift = -normal.dot(radial) / normal.dot(axis);
+    shift = THREE.MathUtils.clamp(shift, -maxShift, maxShift);
+    return origin.clone().add(radial).addScaledVector(axis, shift);
+  };
+  for (let ring=0; ring<2; ring++) {
+    const origin = ring === 0 ? a : b;
+    const normal = ring === 0 ? cutA : cutB;
+    for (let i=0; i<radialSegments; i++) {
+      const theta = i / radialSegments * Math.PI * 2;
+      const radial = u.clone().multiplyScalar(Math.cos(theta)*radius).addScaledVector(v, Math.sin(theta)*radius);
+      const p = ringPoint(origin, normal, radial);
+      positions.push(p.x,p.y,p.z);
+    }
+  }
+  for (let i=0;i<radialSegments;i++) {
+    const j=(i+1)%radialSegments;
+    indices.push(i,j,radialSegments+j, i,radialSegments+j,radialSegments+i);
+  }
+  if (caps.checked) {
+    const startCentre = positions.length/3; positions.push(a.x,a.y,a.z);
+    const endCentre = positions.length/3; positions.push(b.x,b.y,b.z);
+    for (let i=0;i<radialSegments;i++) {
+      const j=(i+1)%radialSegments;
+      indices.push(startCentre,j,i);
+      indices.push(endCentre,radialSegments+i,radialSegments+j);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+function hubGeometry(point) {
+  const radius = Number(diameter.value) * Number(hubScale.value) / 2;
+  const detail = Number(hubDetail.value);
+  const geometry = new THREE.IcosahedronGeometry(radius, detail);
+  geometry.translate(point.x,point.y,point.z);
+  return geometry;
+}
+function polygonBasis(points) {
+  const p0 = points[0];
+  let normal = null;
+  for (let i = 1; i < points.length - 1; i++) {
+    const n = points[i].clone().sub(p0).cross(points[i + 1].clone().sub(p0));
+    if (n.lengthSq() > 1e-12) { normal = n.normalize(); break; }
+  }
+  if (!normal) return null;
+  const u = points[1].clone().sub(p0).normalize();
+  const v = normal.clone().cross(u).normalize();
+  return { origin: p0.clone(), normal, u, v };
+}
+function projectPolygon(points, basis) {
+  return points.map((p) => {
+    const d = p.clone().sub(basis.origin);
+    return { x: d.dot(basis.u), y: d.dot(basis.v) };
+  });
+}
+function signedArea2D(poly) {
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area * 0.5;
+}
+function lineIntersection(a1, a2, b1, b2) {
+  const dax = a2.x - a1.x, day = a2.y - a1.y;
+  const dbx = b2.x - b1.x, dby = b2.y - b1.y;
+  const cross = dax * dby - day * dbx;
+  if (Math.abs(cross) < 1e-10) return null;
+  const t = ((b1.x - a1.x) * dby - (b1.y - a1.y) * dbx) / cross;
+  return { x: a1.x + t * dax, y: a1.y + t * day };
+}
+function insetPolygon2D(poly, distance) {
+  const area = signedArea2D(poly);
+  if (Math.abs(area) < 1e-12) return null;
+  const ccw = area > 0;
+  const lines = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p0 = poly[i], p1 = poly[(i + 1) % poly.length];
+    const ex = p1.x - p0.x, ey = p1.y - p0.y;
+    const len = Math.hypot(ex, ey);
+    if (len < 1e-12) return null;
+    const nx = ccw ? -ey / len : ey / len;
+    const ny = ccw ? ex / len : -ex / len;
+    lines.push({ a: { x: p0.x + nx * distance, y: p0.y + ny * distance }, b: { x: p1.x + nx * distance, y: p1.y + ny * distance } });
+  }
+  const result = [];
+  for (let i = 0; i < poly.length; i++) {
+    const prev = lines[(i - 1 + poly.length) % poly.length];
+    const curr = lines[i];
+    const p = lineIntersection(prev.a, prev.b, curr.a, curr.b);
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+    result.push(p);
+  }
+  const newArea = signedArea2D(result);
+  if (!Number.isFinite(newArea) || Math.sign(newArea) !== Math.sign(area) || Math.abs(newArea) < 1e-12) return null;
+  return result;
+}
+function insetFace3D(points, requestedDistance) {
+  const basis = polygonBasis(points);
+  if (!basis) return null;
+  const poly = projectPolygon(points, basis);
+  let distance = requestedDistance;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const inset2d = insetPolygon2D(poly, distance);
+    if (inset2d) {
+      const inner = inset2d.map((p) => basis.origin.clone().addScaledVector(basis.u, p.x).addScaledVector(basis.v, p.y));
+      return { inner, usedWidth: distance };
+    }
+    distance *= 0.6;
+  }
+  return null;
+}
+function faceWebGeometry(facePoints) {
+  if (facePoints.length < 3) return null;
+  const inset = insetFace3D(facePoints, Number(webWidth.value));
+  if (!inset) return null;
+  const positions = [];
+  const indices = [];
+  facePoints.forEach((p) => positions.push(p.x, p.y, p.z));
+  inset.inner.forEach((p) => positions.push(p.x, p.y, p.z));
+  const n = facePoints.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const oi = i, oj = j, ii = n + i, ij = n + j;
