@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#191c22" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Tube Maker WIP" />
+  <meta name="apple-mobile-web-app-title" content="Tube Maker" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <title>Mesh Line Replacer v0.8.5-wip.1</title>
+  <title>Mesh Line Replacer v0.8.5</title>
   <style>
     :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f4f5f7; background: #111318; color-scheme: dark; }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -67,7 +67,7 @@
 <body>
 <div class="app">
   <header class="toolbar">
-    <div class="title">Mesh Line Replacer · WIP</div>
+    <div class="title">Mesh Line Replacer</div>
     <label class="file-button" for="fileInput">Import model</label>
     <input id="fileInput" type="file" accept=".glb,.gltf,.obj,.stl,model/gltf-binary,model/gltf+json" />
     <button id="exampleBtn" class="secondary">Example</button>
