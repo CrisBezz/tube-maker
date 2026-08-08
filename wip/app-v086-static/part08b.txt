@@ -1,6 +1,6 @@
 
-// v0.8.6-wip.1 — imported master object instancing
-const CUSTOM_WIP_VERSION = '0.8.6-wip.1';
+// v0.8.6-wip.3 — imported master object instancing + strict topology repair
+const CUSTOM_WIP_VERSION = '0.8.6-wip.3';
 
 document.title = `Mesh Line Replacer v${CUSTOM_WIP_VERSION}`;
 const visibleVersion = document.querySelector('.version');
@@ -12,9 +12,9 @@ if (appTitle) appTitle.textContent = 'Mesh Line Replacer · WIP';
 const aboutBody = document.querySelector('.about-body');
 if (aboutBody) {
   const historyLists = aboutBody.querySelectorAll('ul');
-  if (historyLists.length > 1) {
+  if (historyLists.length > 1 && !aboutBody.textContent.includes('v0.8.6-wip.3')) {
     const li = document.createElement('li');
-    li.innerHTML = '<strong>v0.8.6-wip.1</strong> — Imported master-object instances at face centres or shared nodes';
+    li.innerHTML = '<strong>v0.8.6-wip.3</strong> — Imported master-object instances with weld, hole repair and strict manifold validation';
     historyLists[1].prepend(li);
   }
 }
@@ -32,7 +32,13 @@ customInstanceSection.innerHTML = `
     <label class="file-button" for="customInstanceFile">Import master object</label>
     <input id="customInstanceFile" type="file" accept=".glb,.gltf,.obj,.stl,model/gltf-binary,model/gltf+json" style="display:none" />
   </div>
-  <p id="customMasterStatus" class="note" style="margin-bottom:14px">No master object loaded. GLB is recommended for materials.</p>
+  <p id="customMasterStatus" class="note" style="margin-bottom:12px">No master object loaded. GLB is recommended.</p>
+  <div id="customRepairStatus" class="note" style="margin-bottom:14px;padding:10px;border:1px solid #414754;border-radius:9px">Repair status: waiting for master object</div>
+  <label class="check"><input id="customRepairMaster" type="checkbox" checked /> Repair / weld master on import</label>
+  <label class="check"><input id="customFillHoles" type="checkbox" checked /> Close boundary loops</label>
+  <label class="check"><input id="customStrictManifold" type="checkbox" checked /> Strict manifold — reject unresolved master</label>
+  <div class="control"><label for="customWeldTolerance">Weld tolerance</label><input id="customWeldTolerance" type="number" min="0" step="0.000001" value="0" inputmode="decimal" /></div>
+  <p class="note" style="margin-bottom:14px">Tolerance 0 = automatic (model diagonal × 1e−6). Repair removes degenerate / duplicate triangles, welds coincident nodes, unifies winding, closes simple boundary loops, then validates that every final edge has exactly two incident faces.</p>
   <div class="control"><label for="customPlacementMode">Placement</label><select id="customPlacementMode"><option value="face" selected>Face centre</option><option value="node">Shared face node</option></select></div>
   <div class="control"><label for="customSizeMode">Size mode</label><select id="customSizeMode"><option value="relative">Relative to local mesh</option><option value="constant">Constant absolute size</option></select></div>
   <div id="customRelativeControls">
@@ -47,12 +53,17 @@ customInstanceSection.innerHTML = `
   <div class="control"><label for="customTiltX">Tilt X</label><output id="customTiltXOut">0°</output><input id="customTiltX" type="range" min="-180" max="180" value="0" step="1" /></div>
   <div class="control"><label for="customTiltY">Tilt Y</label><output id="customTiltYOut">0°</output><input id="customTiltY" type="range" min="-180" max="180" value="0" step="1" /></div>
   <div class="control"><label for="customExportMode">GLB export</label><select id="customExportMode"><option value="instances" selected>Nomad shared nodes</option><option value="baked">Bake copies</option></select></div>
-  <p class="note">The imported object is recentred as one master. Its selected local axis is aligned to each face normal or averaged shared-node normal. All generated copies share the same master mesh data when exported as Nomad shared nodes.</p>
+  <p class="note">The repaired master is recentred and its selected local axis is aligned to each face normal or averaged shared-node normal. Nomad shared-node export repeats one shared master geometry.</p>
 `;
 torusSection.insertAdjacentElement('afterend', customInstanceSection);
 
 const customInstanceFile = $('#customInstanceFile');
 const customMasterStatus = $('#customMasterStatus');
+const customRepairStatus = $('#customRepairStatus');
+const customRepairMaster = $('#customRepairMaster');
+const customFillHoles = $('#customFillHoles');
+const customStrictManifold = $('#customStrictManifold');
+const customWeldTolerance = $('#customWeldTolerance');
 const customPlacementMode = $('#customPlacementMode');
 const customSizeMode = $('#customSizeMode');
 const customRelativeControls = $('#customRelativeControls');
@@ -73,6 +84,7 @@ let customMasterRecords = [];
 let customMasterName = 'imported-object';
 let customMasterMaxSize = 1;
 let customMasterFaceCount = 0;
+let customMasterTopology = null;
 
 function cloneCustomMaterial(material) {
   if (Array.isArray(material)) return material.map((m) => m?.clone ? m.clone() : m);
@@ -86,66 +98,243 @@ function disposeCustomMaster() {
   }
   customMasterRecords = [];
   customMasterFaceCount = 0;
+  customMasterTopology = null;
+}
+function topologyEdgeKey(a, b) { return a < b ? `${a}|${b}` : `${b}|${a}`; }
+function triangleAreaSq(a, b, c) { return b.clone().sub(a).cross(c.clone().sub(a)).lengthSq() * 0.25; }
+function signedVolumeOfTriangles(vertices, triangles) {
+  let volume6 = 0;
+  for (const t of triangles) {
+    const a = vertices[t[0]], b = vertices[t[1]], c = vertices[t[2]];
+    volume6 += a.dot(b.clone().cross(c));
+  }
+  return volume6 / 6;
+}
+function buildTopologyEdgeMap(triangles) {
+  const edges = new Map();
+  triangles.forEach((t, ti) => {
+    for (let e = 0; e < 3; e++) {
+      const a = t[e], b = t[(e + 1) % 3];
+      const key = topologyEdgeKey(a, b);
+      let arr = edges.get(key);
+      if (!arr) { arr = []; edges.set(key, arr); }
+      arr.push({ ti, a, b });
+    }
+  });
+  return edges;
+}
+function unifyTriangleWinding(triangles) {
+  const edges = buildTopologyEdgeMap(triangles);
+  const neighbours = Array.from({ length: triangles.length }, () => []);
+  for (const refs of edges.values()) {
+    if (refs.length !== 2) continue;
+    const r0 = refs[0], r1 = refs[1];
+    const sameDirection = r0.a === r1.a && r0.b === r1.b;
+    neighbours[r0.ti].push([r1.ti, sameDirection]);
+    neighbours[r1.ti].push([r0.ti, sameDirection]);
+  }
+  const state = new Int8Array(triangles.length);
+  for (let start = 0; start < triangles.length; start++) {
+    if (state[start]) continue;
+    state[start] = 1;
+    const queue = [start];
+    while (queue.length) {
+      const ti = queue.pop();
+      for (const [nj, sameDirection] of neighbours[ti]) {
+        const wanted = sameDirection ? -state[ti] : state[ti];
+        if (!state[nj]) { state[nj] = wanted; queue.push(nj); }
+      }
+    }
+  }
+  for (let i = 0; i < triangles.length; i++) if (state[i] < 0) [triangles[i][1], triangles[i][2]] = [triangles[i][2], triangles[i][1]];
+}
+function extractBoundaryLoops(triangles) {
+  const edges = buildTopologyEdgeMap(triangles);
+  const directed = [];
+  for (const refs of edges.values()) if (refs.length === 1) directed.push({ a: refs[0].a, b: refs[0].b });
+  const outgoing = new Map();
+  const degree = new Map();
+  const bump = (v) => degree.set(v, (degree.get(v) || 0) + 1);
+  directed.forEach((e, i) => {
+    let arr = outgoing.get(e.a); if (!arr) { arr = []; outgoing.set(e.a, arr); }
+    arr.push(i); bump(e.a); bump(e.b);
+  });
+  if ([...degree.values()].some((d) => d !== 2)) return { loops: [], boundaryCount: directed.length, complex: directed.length > 0 };
+  const used = new Uint8Array(directed.length);
+  const loops = [];
+  for (let seed = 0; seed < directed.length; seed++) {
+    if (used[seed]) continue;
+    const first = directed[seed];
+    const loop = [first.a, first.b]; used[seed] = 1;
+    let current = first.b, guard = 0;
+    while (current !== first.a && guard++ < directed.length + 2) {
+      const candidates = outgoing.get(current) || [];
+      const nextIndex = candidates.find((idx) => !used[idx]);
+      if (nextIndex == null) break;
+      used[nextIndex] = 1; current = directed[nextIndex].b;
+      if (current !== first.a) loop.push(current);
+    }
+    if (current === first.a && loop.length >= 3) loops.push(loop);
+    else return { loops: [], boundaryCount: directed.length, complex: true };
+  }
+  return { loops, boundaryCount: directed.length, complex: false };
+}
+function projectLoop2D(loop, vertices) {
+  const pts = loop.map((i) => vertices[i]);
+  const normal = new THREE.Vector3();
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    normal.x += (a.y - b.y) * (a.z + b.z);
+    normal.y += (a.z - b.z) * (a.x + b.x);
+    normal.z += (a.x - b.x) * (a.y + b.y);
+  }
+  const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);
+  if (ax >= ay && ax >= az) return pts.map((p) => new THREE.Vector2(p.y, p.z));
+  if (ay >= ax && ay >= az) return pts.map((p) => new THREE.Vector2(p.x, p.z));
+  return pts.map((p) => new THREE.Vector2(p.x, p.y));
+}
+function fillBoundaryLoops(vertices, triangles) {
+  const result = extractBoundaryLoops(triangles);
+  if (!result.boundaryCount) return { added: 0, loops: 0, complex: false };
+  if (result.complex) return { added: 0, loops: 0, complex: true };
+  let added = 0;
+  for (const originalLoop of result.loops) {
+    const loop = originalLoop.slice().reverse();
+    const shape = projectLoop2D(loop, vertices);
+    const tris2d = THREE.ShapeUtils.triangulateShape(shape, []);
+    for (const tri of tris2d) {
+      const t = [loop[tri[0]], loop[tri[1]], loop[tri[2]]];
+      const a = vertices[t[0]], b = vertices[t[1]], c = vertices[t[2]];
+      if (triangleAreaSq(a, b, c) > 1e-24) { triangles.push(t); added++; }
+    }
+  }
+  return { added, loops: result.loops.length, complex: false };
+}
+function topologyStats(triangles) {
+  const edges = buildTopologyEdgeMap(triangles);
+  let boundary = 0, nonManifold = 0;
+  for (const refs of edges.values()) {
+    if (refs.length === 1) boundary++;
+    else if (refs.length !== 2) nonManifold++;
+  }
+  return { edges: edges.size, boundary, nonManifold, manifold: boundary === 0 && nonManifold === 0 };
+}
+function repairCustomMasterGeometry(root) {
+  root.updateMatrixWorld(true);
+  const rawTriangles = [], rawPoints = [], sourceMaterials = [];
+  root.traverse((obj) => {
+    if (!obj.isMesh || !obj.geometry?.attributes?.position) return;
+    const g = obj.geometry, pos = g.getAttribute('position'), index = g.index, base = rawPoints.length;
+    for (let i = 0; i < pos.count; i++) rawPoints.push(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(obj.matrixWorld));
+    const count = index ? index.count : pos.count;
+    for (let i = 0; i + 2 < count; i += 3) rawTriangles.push([base + (index ? index.getX(i) : i), base + (index ? index.getX(i + 1) : i + 1), base + (index ? index.getX(i + 2) : i + 2)]);
+    if (obj.material) sourceMaterials.push(obj.material);
+  });
+  if (!rawTriangles.length || !rawPoints.length) throw new Error('No usable triangle geometry was found in the master object.');
+  const bounds = new THREE.Box3(); rawPoints.forEach((p) => bounds.expandByPoint(p));
+  const diag = bounds.getSize(new THREE.Vector3()).length();
+  const userTol = Number(customWeldTolerance.value || 0);
+  const tolerance = userTol > 0 ? userTol : Math.max(diag * 1e-6, 1e-9);
+  const inv = 1 / tolerance, grid = new Map(), vertices = [];
+  const mapIndex = new Int32Array(rawPoints.length);
+  for (let i = 0; i < rawPoints.length; i++) {
+    const p = rawPoints[i], qx = Math.round(p.x * inv), qy = Math.round(p.y * inv), qz = Math.round(p.z * inv);
+    let found = -1;
+    for (let dx = -1; dx <= 1 && found < 0; dx++) for (let dy = -1; dy <= 1 && found < 0; dy++) for (let dz = -1; dz <= 1 && found < 0; dz++) {
+      const list = grid.get(`${qx + dx},${qy + dy},${qz + dz}`); if (!list) continue;
+      for (const vi of list) if (vertices[vi].distanceToSquared(p) <= tolerance * tolerance) { found = vi; break; }
+    }
+    if (found < 0) {
+      found = vertices.length; vertices.push(p.clone());
+      const key = `${qx},${qy},${qz}`; let list = grid.get(key); if (!list) { list = []; grid.set(key, list); } list.push(found);
+    }
+    mapIndex[i] = found;
+  }
+  const triangles = [], seen = new Set();
+  let degenerateRemoved = 0, duplicateRemoved = 0;
+  const areaEpsSq = Math.max(diag * diag * 1e-20, 1e-30);
+  for (const rt of rawTriangles) {
+    const t = [mapIndex[rt[0]], mapIndex[rt[1]], mapIndex[rt[2]]];
+    if (t[0] === t[1] || t[1] === t[2] || t[2] === t[0] || triangleAreaSq(vertices[t[0]], vertices[t[1]], vertices[t[2]]) <= areaEpsSq) { degenerateRemoved++; continue; }
+    const sorted = t.slice().sort((a,b) => a-b).join('|');
+    if (seen.has(sorted)) { duplicateRemoved++; continue; }
+    seen.add(sorted); triangles.push(t);
+  }
+  if (!triangles.length) throw new Error('Repair removed all triangles from the master object.');
+  unifyTriangleWinding(triangles);
+  let holesAdded = 0, holeLoops = 0, complexBoundary = false;
+  if (customFillHoles.checked) {
+    const fill = fillBoundaryLoops(vertices, triangles);
+    holesAdded = fill.added; holeLoops = fill.loops; complexBoundary = fill.complex;
+    if (holesAdded) unifyTriangleWinding(triangles);
+  }
+  if (signedVolumeOfTriangles(vertices, triangles) < 0) for (const t of triangles) [t[1], t[2]] = [t[2], t[1]];
+  const stats = topologyStats(triangles);
+  const positions = new Float32Array(vertices.length * 3);
+  vertices.forEach((p, i) => { positions[i*3] = p.x; positions[i*3+1] = p.y; positions[i*3+2] = p.z; });
+  const IndexArray = vertices.length > 65535 ? Uint32Array : Uint16Array;
+  const indices = new IndexArray(triangles.length * 3);
+  triangles.forEach((t, i) => { indices[i*3] = t[0]; indices[i*3+1] = t[1]; indices[i*3+2] = t[2]; });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
+  const material = sourceMaterials.length ? cloneCustomMaterial(sourceMaterials[0]) : new THREE.MeshStandardMaterial({ color: 0xc6d4e8, roughness: 0.65, metalness: 0.02 });
+  return { geometry, material, report: { rawVertices: rawPoints.length, weldedVertices: vertices.length, rawTriangles: rawTriangles.length, triangles: triangles.length, degenerateRemoved, duplicateRemoved, holesAdded, holeLoops, complexBoundary, tolerance, ...stats } };
 }
 function prepareCustomMaster(root, name) {
   disposeCustomMaster();
-  root.updateMatrixWorld(true);
-  const records = [];
-  const bounds = new THREE.Box3();
-  let hasBounds = false;
-  root.traverse((obj) => {
-    if (!obj.isMesh || !obj.geometry) return;
-    const geometry = obj.geometry.clone();
-    geometry.applyMatrix4(obj.matrixWorld);
-    if (!geometry.attributes.normal) geometry.computeVertexNormals();
-    geometry.computeBoundingBox();
-    if (geometry.boundingBox && !geometry.boundingBox.isEmpty()) {
-      if (!hasBounds) { bounds.copy(geometry.boundingBox); hasBounds = true; }
-      else bounds.union(geometry.boundingBox);
-    }
-    records.push({ geometry, material: cloneCustomMaterial(obj.material), name: obj.name || 'MasterPart' });
-  });
-  if (!records.length || !hasBounds) {
-    records.forEach((r) => r.geometry.dispose());
-    throw new Error('No usable mesh geometry was found in the imported master object.');
+  let records = [], report = null;
+  if (customRepairMaster.checked) {
+    const repaired = repairCustomMasterGeometry(root);
+    records = [{ geometry: repaired.geometry, material: repaired.material, name: 'RepairedMaster' }]; report = repaired.report;
+  } else {
+    root.updateMatrixWorld(true);
+    root.traverse((obj) => {
+      if (!obj.isMesh || !obj.geometry) return;
+      const geometry = obj.geometry.clone(); geometry.applyMatrix4(obj.matrixWorld);
+      if (!geometry.attributes.normal) geometry.computeVertexNormals();
+      records.push({ geometry, material: cloneCustomMaterial(obj.material), name: obj.name || 'MasterPart' });
+    });
+    if (!records.length) throw new Error('No usable mesh geometry was found in the imported master object.');
+    report = { manifold: false, boundary: -1, nonManifold: -1, tolerance: 0, unrepaired: true };
   }
-  const centre = bounds.getCenter(new THREE.Vector3());
-  const size = bounds.getSize(new THREE.Vector3());
-  customMasterMaxSize = Math.max(size.x, size.y, size.z, 1e-9);
-  customMasterFaceCount = 0;
+  const bounds = new THREE.Box3();
+  for (const rec of records) { rec.geometry.computeBoundingBox(); if (rec.geometry.boundingBox) bounds.union(rec.geometry.boundingBox); }
+  if (bounds.isEmpty()) { records.forEach((r) => r.geometry.dispose()); throw new Error('Master object has empty bounds.'); }
+  const centre = bounds.getCenter(new THREE.Vector3()), size = bounds.getSize(new THREE.Vector3());
+  customMasterMaxSize = Math.max(size.x, size.y, size.z, 1e-9); customMasterFaceCount = 0;
   for (const rec of records) {
-    rec.geometry.translate(-centre.x, -centre.y, -centre.z);
-    rec.geometry.computeBoundingSphere();
+    rec.geometry.translate(-centre.x, -centre.y, -centre.z); rec.geometry.computeBoundingBox(); rec.geometry.computeBoundingSphere();
     customMasterFaceCount += rec.geometry.index ? rec.geometry.index.count / 3 : rec.geometry.getAttribute('position').count / 3;
   }
-  customMasterRecords = records;
-  customMasterName = name || 'imported-object';
-  customMasterStatus.textContent = `${customMasterName} loaded • ${records.length.toLocaleString()} mesh part${records.length === 1 ? '' : 's'} • ${Math.round(customMasterFaceCount).toLocaleString()} faces • source max size ${customMasterMaxSize.toPrecision(4)}`;
+  customMasterRecords = records; customMasterName = name || 'imported-object'; customMasterTopology = report;
+  if (report.unrepaired) customRepairStatus.textContent = '⚠ Master repair disabled — topology is not certified welded / watertight / manifold.';
+  else if (report.manifold) customRepairStatus.textContent = `✓ MANIFOLD / WATERTIGHT • ${report.weldedVertices.toLocaleString()} welded vertices • ${report.triangles.toLocaleString()} triangles • 0 boundary edges • 0 non-manifold edges • ${report.holeLoops.toLocaleString()} boundary loop${report.holeLoops === 1 ? '' : 's'} repaired`;
+  else customRepairStatus.textContent = `✕ REPAIR INCOMPLETE • ${report.boundary.toLocaleString()} boundary edges • ${report.nonManifold.toLocaleString()} non-manifold edges${report.complexBoundary ? ' • complex/open boundary could not be safely capped' : ''}`;
+  customMasterStatus.textContent = `${customMasterName} • ${records.length.toLocaleString()} repaired master mesh${records.length === 1 ? '' : 'es'} • ${Math.round(customMasterFaceCount).toLocaleString()} faces • max size ${customMasterMaxSize.toPrecision(4)}${report.tolerance ? ` • weld tol ${report.tolerance.toPrecision(3)}` : ''}`;
+  if (customStrictManifold.checked && !report.manifold) {
+    disposeCustomMaster();
+    throw new Error('Strict manifold validation failed. Master was rejected; adjust weld tolerance or repair the source mesh before instancing.');
+  }
 }
 async function loadCustomMasterFile(file) {
-  customMasterStatus.textContent = `Loading ${file.name}…`;
-  const ext = file.name.split('.').pop()?.toLowerCase();
-  let loaded;
-  if (ext === 'obj') {
-    loaded = new OBJLoader().parse(await file.text());
-  } else {
+  customMasterStatus.textContent = `Loading and repairing ${file.name}…`; customRepairStatus.textContent = 'Repair status: analysing topology…';
+  const ext = file.name.split('.').pop()?.toLowerCase(); let loaded;
+  if (ext === 'obj') loaded = new OBJLoader().parse(await file.text());
+  else {
     const url = URL.createObjectURL(file);
     try {
       if (ext === 'glb' || ext === 'gltf') loaded = (await new GLTFLoader().loadAsync(url)).scene;
-      else if (ext === 'stl') {
-        const geometry = await new STLLoader().loadAsync(url);
-        loaded = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xc6d4e8, roughness: 0.65, metalness: 0.02 }));
-      } else throw new Error('Unsupported master-object format.');
+      else if (ext === 'stl') loaded = new THREE.Mesh(await new STLLoader().loadAsync(url), new THREE.MeshStandardMaterial({ color: 0xc6d4e8, roughness: 0.65, metalness: 0.02 }));
+      else throw new Error('Unsupported master-object format.');
     } finally { URL.revokeObjectURL(url); }
   }
   prepareCustomMaster(loaded, file.name.replace(/\.[^.]+$/, '') || 'imported-object');
 }
-
 function updateCustomInstanceUI() {
   customInstanceSection.classList.toggle('hidden', replaceMode.value !== 'customInstance');
-  const constant = customSizeMode.value === 'constant';
-  customRelativeControls.classList.toggle('hidden', constant);
-  customConstantControls.classList.toggle('hidden', !constant);
+  const constant = customSizeMode.value === 'constant'; customRelativeControls.classList.toggle('hidden', constant); customConstantControls.classList.toggle('hidden', !constant);
 }
 replaceMode.addEventListener('change', updateCustomInstanceUI);
 customSizeMode.addEventListener('change', updateCustomInstanceUI);
@@ -154,190 +343,92 @@ customTiltX.addEventListener('input', () => customTiltXOut.value = `${customTilt
 customTiltY.addEventListener('input', () => customTiltYOut.value = `${customTiltY.value}°`);
 customInstanceFile.addEventListener('change', () => {
   const file = customInstanceFile.files?.[0];
-  if (file) loadCustomMasterFile(file).catch((e) => { console.error(e); customMasterStatus.textContent = `Master load failed: ${e.message || e}`; });
+  if (file) loadCustomMasterFile(file).catch((e) => { console.error(e); customMasterStatus.textContent = `Master load failed: ${e.message || e}`; if (!customMasterRecords.length) customRepairStatus.textContent = '✕ Master rejected'; });
   customInstanceFile.value = '';
 });
-
 function customAxisVector() {
   switch (customAxis.value) {
-    case 'px': return new THREE.Vector3(1,0,0);
-    case 'py': return new THREE.Vector3(0,1,0);
-    case 'nx': return new THREE.Vector3(-1,0,0);
-    case 'ny': return new THREE.Vector3(0,-1,0);
-    case 'nz': return new THREE.Vector3(0,0,-1);
-    default: return new THREE.Vector3(0,0,1);
+    case 'px': return new THREE.Vector3(1,0,0); case 'py': return new THREE.Vector3(0,1,0); case 'nx': return new THREE.Vector3(-1,0,0); case 'ny': return new THREE.Vector3(0,-1,0); case 'nz': return new THREE.Vector3(0,0,-1); default: return new THREE.Vector3(0,0,1);
   }
 }
-function customAxisCorrectionQuaternion() {
-  return new THREE.Quaternion().setFromUnitVectors(customAxisVector(), new THREE.Vector3(0,0,1));
-}
+function customAxisCorrectionQuaternion() { return new THREE.Quaternion().setFromUnitVectors(customAxisVector(), new THREE.Vector3(0,0,1)); }
 function customPlacementMatrixForFace(face) {
   if (!face || face.length < 3) return null;
-  const centre = face.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / face.length);
-  const normal = polygonNormal(face);
-  if (!normal) return null;
-  let inRadius = Infinity;
-  for (let i = 0; i < face.length; i++) inRadius = Math.min(inRadius, pointSegmentDistance3D(centre, face[i], face[(i + 1) % face.length]));
+  const centre = face.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / face.length), normal = polygonNormal(face); if (!normal) return null;
+  let inRadius = Infinity; for (let i = 0; i < face.length; i++) inRadius = Math.min(inRadius, pointSegmentDistance3D(centre, face[i], face[(i + 1) % face.length]));
   if (!Number.isFinite(inRadius) || inRadius <= 1e-9) return null;
-  const frame = torusLocalFrame(face, normal, centre);
-  return customPlacementMatrix(frame, centre, inRadius * 2);
+  return customPlacementMatrix(torusLocalFrame(face, normal, centre), centre, inRadius * 2);
 }
-function customPlacementMatrixForNode(node) {
-  if (!node?.normal || !node?.point) return null;
-  const frame = torusNodeFrame(node);
-  const localDiameter = Math.max((node.localRadius || 0) * 2, 1e-9);
-  return customPlacementMatrix(frame, node.point, localDiameter);
-}
+function customPlacementMatrixForNode(node) { if (!node?.normal || !node?.point) return null; return customPlacementMatrix(torusNodeFrame(node), node.point, Math.max((node.localRadius || 0) * 2, 1e-9)); }
 function customPlacementMatrix(frame, point, localDiameter) {
-  const basis = new THREE.Matrix4().makeBasis(frame.xAxis, frame.yAxis, frame.normal);
-  const qFrame = new THREE.Quaternion().setFromRotationMatrix(basis);
+  const basis = new THREE.Matrix4().makeBasis(frame.xAxis, frame.yAxis, frame.normal), qFrame = new THREE.Quaternion().setFromRotationMatrix(basis);
   const qTiltX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), THREE.MathUtils.degToRad(Number(customTiltX.value || 0)));
   const qTiltY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), THREE.MathUtils.degToRad(Number(customTiltY.value || 0)));
-  const qAxis = customAxisCorrectionQuaternion();
-  const quaternion = qFrame.clone().multiply(qTiltY.clone().multiply(qTiltX)).multiply(qAxis);
-  let wantedSize;
-  if (customSizeMode.value === 'constant') wantedSize = Number(customConstantSize.value);
-  else wantedSize = localDiameter * Number(customRelativeScale.value || 1);
+  const quaternion = qFrame.clone().multiply(qTiltY.clone().multiply(qTiltX)).multiply(customAxisCorrectionQuaternion());
+  const wantedSize = customSizeMode.value === 'constant' ? Number(customConstantSize.value) : localDiameter * Number(customRelativeScale.value || 1);
   if (!Number.isFinite(wantedSize) || wantedSize <= 0 || !Number.isFinite(customMasterMaxSize) || customMasterMaxSize <= 0) return null;
-  const uniformScale = wantedSize / customMasterMaxSize;
-  const offset = Number(customNormalOffset.value || 0);
-  const position = point.clone().addScaledVector(frame.normal, offset);
+  const uniformScale = wantedSize / customMasterMaxSize, position = point.clone().addScaledVector(frame.normal, Number(customNormalOffset.value || 0));
   return new THREE.Matrix4().compose(position, quaternion, new THREE.Vector3(uniformScale, uniformScale, uniformScale));
 }
-function customOrientedFaces(faces) {
-  const previous = torusNormalMode.value;
-  torusNormalMode.value = customNormalMode.value;
-  try { return orientTorusFaces(faces); }
-  finally { torusNormalMode.value = previous; }
-}
-function cloneCustomGenerationRecords() {
-  return customMasterRecords.map((rec) => ({ geometry: rec.geometry.clone(), material: cloneCustomMaterial(rec.material), name: rec.name }));
-}
-
+function customOrientedFaces(faces) { const previous = torusNormalMode.value; torusNormalMode.value = customNormalMode.value; try { return orientTorusFaces(faces); } finally { torusNormalMode.value = previous; } }
+function cloneCustomGenerationRecords() { return customMasterRecords.map((rec) => ({ geometry: rec.geometry.clone(), material: cloneCustomMaterial(rec.material), name: rec.name })); }
 async function generateCustomInstanceResult() {
   if (!sourceRoot) return;
-  if (!customMasterRecords.length) { setStatus('Import a master object before generating instances'); return; }
+  if (!customMasterRecords.length) { setStatus('Import a valid manifold master object before generating instances'); return; }
+  if (customStrictManifold.checked && !customMasterTopology?.manifold) { setStatus('Master is not certified manifold — generation blocked'); return; }
   generateBtn.disabled = true;
   try {
-    const facesResult = collectFaces();
-    const oriented = customOrientedFaces(facesResult.faces);
-    const symmetryResult = applySymmetryToFaces(oriented);
-    const faces = symmetryResult.faces;
-    const placementMode = customPlacementMode.value === 'node' ? 'node' : 'face';
-    const placements = placementMode === 'node' ? buildSharedNodePlacements(faces) : faces;
+    const facesResult = collectFaces(), oriented = customOrientedFaces(facesResult.faces), symmetryResult = applySymmetryToFaces(oriented), faces = symmetryResult.faces;
+    const placementMode = customPlacementMode.value === 'node' ? 'node' : 'face', placements = placementMode === 'node' ? buildSharedNodePlacements(faces) : faces;
     if (!placements.length) { setStatus('No usable placement locations were found'); return; }
     const meshNodeCount = placements.length * customMasterRecords.length;
     if (meshNodeCount > 80000 && !confirm(`This will create ${meshNodeCount.toLocaleString()} instanced mesh nodes. Continue?`)) { setStatus('Generation cancelled'); return; }
-    setStatus(`Creating ${placements.length.toLocaleString()} imported-object instances…`);
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    disposeObject(resultRoot);
-    resultRoot = new THREE.Group();
-    resultRoot.name = 'ImportedMasterInstances';
-    const generationRecords = cloneCustomGenerationRecords();
-    const matrices = [];
-    let skipped = 0;
-    for (const placement of placements) {
-      const matrix = placementMode === 'node' ? customPlacementMatrixForNode(placement) : customPlacementMatrixForFace(placement);
-      if (matrix) matrices.push(matrix); else skipped++;
-    }
+    setStatus(`Creating ${placements.length.toLocaleString()} imported-object instances…`); await new Promise((resolve) => requestAnimationFrame(resolve));
+    disposeObject(resultRoot); resultRoot = new THREE.Group(); resultRoot.name = 'ImportedMasterInstances';
+    const generationRecords = cloneCustomGenerationRecords(), matrices = []; let skipped = 0;
+    for (const placement of placements) { const matrix = placementMode === 'node' ? customPlacementMatrixForNode(placement) : customPlacementMatrixForFace(placement); if (matrix) matrices.push(matrix); else skipped++; }
     if (!matrices.length) { generationRecords.forEach((r) => r.geometry.dispose()); setStatus('No valid instance transforms could be generated'); return; }
     for (const rec of generationRecords) {
-      const instanced = new THREE.InstancedMesh(rec.geometry, rec.material, matrices.length);
-      instanced.name = rec.name || customMasterName;
-      instanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      matrices.forEach((m, i) => instanced.setMatrixAt(i, m));
-      instanced.instanceMatrix.needsUpdate = true;
-      resultRoot.add(instanced);
+      const instanced = new THREE.InstancedMesh(rec.geometry, rec.material, matrices.length); instanced.name = rec.name || customMasterName; instanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      matrices.forEach((m, i) => instanced.setMatrixAt(i, m)); instanced.instanceMatrix.needsUpdate = true; resultRoot.add(instanced);
     }
-    resultRoot.userData.customInstanceSet = { version: CUSTOM_WIP_VERSION, masterName: customMasterName, placementMode, count: matrices.length };
-    scene.add(resultRoot);
-    sourceRoot.visible = showSource.checked;
-    exportBtn.disabled = false;
-    const totalFaces = customMasterFaceCount * matrices.length;
+    resultRoot.userData.customInstanceSet = { version: CUSTOM_WIP_VERSION, masterName: customMasterName, placementMode, count: matrices.length, manifold: !!customMasterTopology?.manifold };
+    scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
     const label = placementMode === 'node' ? 'shared face nodes' : 'face centres';
-    setStatus(`Generated ${matrices.length.toLocaleString()} instances of ${customMasterName} at ${label}${placementMode === 'node' ? ' • averaged node normals' : ''}${skipped ? ` • ${skipped.toLocaleString()} skipped` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}`);
-    setOutputMetrics({ faces: Math.round(totalFaces), holes: matrices.length, exported: false });
-  } catch (error) {
-    console.error(error);
-    setStatus(`Generation failed: ${error.message || error}`);
-  } finally { generateBtn.disabled = false; }
+    setStatus(`Generated ${matrices.length.toLocaleString()} instances of ${customMasterName} at ${label} • master ${customMasterTopology?.manifold ? 'manifold/watertight' : 'unverified'}${skipped ? ` • ${skipped.toLocaleString()} skipped` : ''}`);
+    setOutputMetrics({ faces: Math.round(customMasterFaceCount * matrices.length), holes: matrices.length, exported: false });
+  } catch (error) { console.error(error); setStatus(`Generation failed: ${error.message || error}`); } finally { generateBtn.disabled = false; }
 }
-
 function buildCustomSharedNodeExport() {
-  const exportScene = new THREE.Scene();
-  exportScene.name = 'NomadImportedMasterInstances';
-  const matrix = new THREE.Matrix4();
+  const exportScene = new THREE.Scene(); exportScene.name = 'NomadImportedMasterInstances'; const matrix = new THREE.Matrix4();
   resultRoot.children.filter((c) => c.isInstancedMesh).forEach((instanced) => {
     for (let i = 0; i < instanced.count; i++) {
-      instanced.getMatrixAt(i, matrix);
-      const mesh = new THREE.Mesh(instanced.geometry, instanced.material);
-      mesh.name = instanced.name || customMasterName;
-      mesh.matrixAutoUpdate = false;
-      mesh.matrix.copy(matrix);
-      mesh.userData = nomadNodeExtras(matrix, false);
-      exportScene.add(mesh);
+      instanced.getMatrixAt(i, matrix); const mesh = new THREE.Mesh(instanced.geometry, instanced.material); mesh.name = instanced.name || customMasterName; mesh.matrixAutoUpdate = false; mesh.matrix.copy(matrix); mesh.userData = nomadNodeExtras(matrix, false); exportScene.add(mesh);
     }
   });
-  exportScene.userData = { meshLineReplacer: { version: CUSTOM_WIP_VERSION, instanceMode: 'shared-gltf-nodes', master: customMasterName, target: 'Nomad Sculpt' } };
-  return exportScene;
+  exportScene.userData = { meshLineReplacer: { version: CUSTOM_WIP_VERSION, instanceMode: 'shared-gltf-nodes', master: customMasterName, target: 'Nomad Sculpt', manifoldMaster: !!customMasterTopology?.manifold } }; return exportScene;
 }
 function buildCustomBakedExport() {
-  const root = new THREE.Group();
-  root.name = 'BakedImportedMasterCopies';
-  const matrix = new THREE.Matrix4();
+  const root = new THREE.Group(); root.name = 'BakedImportedMasterCopies'; const matrix = new THREE.Matrix4();
   resultRoot.children.filter((c) => c.isInstancedMesh).forEach((instanced) => {
-    for (let i = 0; i < instanced.count; i++) {
-      instanced.getMatrixAt(i, matrix);
-      const geometry = instanced.geometry.clone();
-      geometry.applyMatrix4(matrix);
-      const mesh = new THREE.Mesh(geometry, cloneCustomMaterial(instanced.material));
-      mesh.name = instanced.name || customMasterName;
-      root.add(mesh);
-    }
-  });
-  return root;
+    for (let i = 0; i < instanced.count; i++) { instanced.getMatrixAt(i, matrix); const geometry = instanced.geometry.clone(); geometry.applyMatrix4(matrix); root.add(new THREE.Mesh(geometry, cloneCustomMaterial(instanced.material))); }
+  }); return root;
 }
-function removeSharedExportRoot(root) {
-  if (!root) return;
-  while (root.children.length) root.remove(root.children[root.children.length - 1]);
-}
+function removeSharedExportRoot(root) { if (!root) return; while (root.children.length) root.remove(root.children[root.children.length - 1]); }
 function exportCustomInstanceGlb() {
   if (!resultRoot) return;
-  exportBtn.disabled = true;
-  const shared = customExportMode.value === 'instances';
-  setStatus(shared ? 'Building Nomad shared-node imported-object GLB…' : 'Baking imported-object copies…');
+  if (customStrictManifold.checked && !customMasterTopology?.manifold) { setStatus('Export blocked — master is not certified manifold'); return; }
+  exportBtn.disabled = true; const shared = customExportMode.value === 'instances'; setStatus(shared ? 'Building Nomad shared-node imported-object GLB…' : 'Baking imported-object copies…');
   const exportRoot = shared ? buildCustomSharedNodeExport() : buildCustomBakedExport();
   new GLTFExporter().parse(exportRoot, (result) => {
-    const blob = new Blob([result], { type: 'model/gltf-binary' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const placement = customPlacementMode.value === 'node' ? 'node' : 'face';
-    a.href = url;
-    a.download = `${sourceName}-${customMasterName}-${placement}-${shared ? 'instances' : 'baked'}.glb`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    const blob = new Blob([result], { type: 'model/gltf-binary' }), url = URL.createObjectURL(blob), a = document.createElement('a'), placement = customPlacementMode.value === 'node' ? 'node' : 'face';
+    a.href = url; a.download = `${sourceName}-${customMasterName}-${placement}-${shared ? 'instances' : 'baked'}.glb`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000);
     if (shared) removeSharedExportRoot(exportRoot); else disposeObject(exportRoot);
-    setStatus(shared ? 'Nomad shared-node imported-object GLB exported' : 'Baked imported-object GLB exported');
-    setOutputMetrics({ exported: true });
-    exportBtn.disabled = false;
+    setStatus(shared ? 'Nomad shared-node imported-object GLB exported' : 'Baked imported-object GLB exported'); setOutputMetrics({ exported: true }); exportBtn.disabled = false;
   }, (error) => {
-    console.error(error);
-    if (shared) removeSharedExportRoot(exportRoot); else disposeObject(exportRoot);
-    setStatus(`Export failed: ${error.message || error}`);
-    exportBtn.disabled = false;
+    console.error(error); if (shared) removeSharedExportRoot(exportRoot); else disposeObject(exportRoot); setStatus(`Export failed: ${error.message || error}`); exportBtn.disabled = false;
   }, { binary: true, onlyVisible: true });
 }
-
-// Capture custom-mode actions before the stable v0.8.5 listeners run.
-generateBtn.addEventListener('click', (event) => {
-  if (replaceMode.value !== 'customInstance') return;
-  event.preventDefault(); event.stopImmediatePropagation();
-  generateCustomInstanceResult();
-}, true);
-exportBtn.addEventListener('click', (event) => {
-  if (replaceMode.value !== 'customInstance') return;
-  event.preventDefault(); event.stopImmediatePropagation();
-  exportCustomInstanceGlb();
-}, true);
-
+generateBtn.addEventListener('click', (event) => { if (replaceMode.value !== 'customInstance') return; event.preventDefault(); event.stopImmediatePropagation(); generateCustomInstanceResult(); }, true);
+exportBtn.addEventListener('click', (event) => { if (replaceMode.value !== 'customInstance') return; event.preventDefault(); event.stopImmediatePropagation(); exportCustomInstanceGlb(); }, true);
 updateCustomInstanceUI();
