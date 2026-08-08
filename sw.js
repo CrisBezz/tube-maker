@@ -1,4 +1,4 @@
-const CACHE='mesh-line-replacer-v0.8.4-static-nomad';
+const CACHE='mesh-line-replacer-v0.8.5-shared-node-torus';
 const APP_SHELL=[
   './','./index.html','./manifest.webmanifest',
   './app-v084-static/part00.txt','./app-v084-static/part01.txt','./app-v084-static/part02.txt','./app-v084-static/part03.txt','./app-v084-static/part04.txt',
