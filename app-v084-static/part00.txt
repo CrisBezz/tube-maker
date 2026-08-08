@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#191c22" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Tube Maker" />
+  <meta name="apple-mobile-web-app-title" content="Tube Maker WIP" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <title>Mesh Line Replacer v0.8.4</title>
+  <title>Mesh Line Replacer v0.8.5-wip.1</title>
   <style>
     :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f4f5f7; background: #111318; color-scheme: dark; }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -67,7 +67,7 @@
 <body>
 <div class="app">
   <header class="toolbar">
-    <div class="title">Mesh Line Replacer</div>
+    <div class="title">Mesh Line Replacer · WIP</div>
     <label class="file-button" for="fileInput">Import model</label>
     <input id="fileInput" type="file" accept=".glb,.gltf,.obj,.stl,model/gltf-binary,model/gltf+json" />
     <button id="exampleBtn" class="secondary">Example</button>
@@ -82,8 +82,8 @@
     <aside class="panel">
       <div class="section">
         <h2>Replacement</h2>
-        <div class="control"><label for="replaceMode">Replace with</label><select id="replaceMode"><option value="tube">Faceted tubes</option><option value="surfaceWeb">Inset surface web</option><option value="solidWeb">Solid surface web</option><option value="faceTorus">Torus per face</option></select></div>
-        <p class="note">Inset surface web creates a single-face-thick web. Solid surface web creates a bevelled closed mesh. Torus per face replaces every source face with a torus aligned to that face normal.</p>
+        <div class="control"><label for="replaceMode">Replace with</label><select id="replaceMode"><option value="tube">Faceted tubes</option><option value="surfaceWeb">Inset surface web</option><option value="solidWeb">Solid surface web</option><option value="faceTorus">Torus per face / node</option></select></div>
+        <p class="note">Inset surface web creates a single-face-thick web. Solid surface web creates a bevelled closed mesh. Torus mode can place shared torus instances at face centres or shared face nodes.</p>
       </div>
       <div class="section">
         <h2>Source topology</h2>
