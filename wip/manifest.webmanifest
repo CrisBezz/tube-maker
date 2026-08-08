@@ -1,8 +1,8 @@
 {
   "name": "Mesh Line Replacer WIP",
   "short_name": "Mesh WIP",
-  "version": "0.8.6-wip.3",
-  "description": "Work-in-progress Mesh Line Replacer build with imported master-object instancing and strict manifold repair validation.",
+  "version": "0.8.7-wip.1",
+  "description": "Work-in-progress Mesh Line Replacer build with grouped Nomad-compatible shared-instance GLB export.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#111318",
