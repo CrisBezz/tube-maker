@@ -1,0 +1,168 @@
+obj.geometry);
+      quadPairs += result.pairs; unmatchedTriangles += result.unmatched;
+      for (const [a, b] of result.edges) if (a.distanceTo(b) >= Number(minLength.value || 0)) addEdge(edges, a, b);
+      return;
+    }
+    const edgeGeo = edgeMode.value === 'sharp' ? new THREE.EdgesGeometry(obj.geometry, Number(angle.value)) : new THREE.WireframeGeometry(obj.geometry);
+    const p = edgeGeo.getAttribute('position');
+    for (let i = 0; i < p.count; i += 2) {
+      const a = new THREE.Vector3().fromBufferAttribute(p, i);
+      const b = new THREE.Vector3().fromBufferAttribute(p, i + 1);
+      if (a.distanceTo(b) >= Number(minLength.value || 0)) addEdge(edges, a, b);
+    }
+    edgeGeo.dispose();
+  });
+  const info = edgeMode.value === 'quads' ? `${quadPairs.toLocaleString()} reconstructed quads • ${unmatchedTriangles.toLocaleString()} unmatched triangles` : '';
+  return { edges: [...edges.values()], info };
+}
+function collectFaces() {
+  if (!sourceRoot) return { faces: [], info: '' };
+  if (edgeMode.value === 'objQuads') {
+    const faces = (originalObjQuadFaces || []).map((face) => face.map((p) => p.clone()));
+    return { faces, info: `${faces.length.toLocaleString()} original OBJ quad faces` };
+  }
+  const faces = [];
+  let quadPairs = 0, unmatchedTriangles = 0;
+  sourceRoot.traverse((obj) => {
+    if (!obj.isMesh) return;
+    if (edgeMode.value === 'quads') {
+      const result = reconstructQuadData(obj.geometry);
+      quadPairs += result.pairs; unmatchedTriangles += result.unmatched;
+      faces.push(...result.faces.map((face) => face.map((p) => p.clone())));
+      return;
+    }
+    const working = prepareMergedGeometry(obj.geometry);
+    const pos = working.getAttribute('position');
+    const idx = working.index;
+    if (idx && pos) {
+      for (let i = 0; i < idx.count; i += 3) {
+        const tri = [idx.getX(i), idx.getX(i + 1), idx.getX(i + 2)].map((id) => new THREE.Vector3().fromBufferAttribute(pos, id));
+        const e0 = tri[0].distanceTo(tri[1]), e1 = tri[1].distanceTo(tri[2]), e2 = tri[2].distanceTo(tri[0]);
+        if (Math.min(e0, e1, e2) >= Number(minLength.value || 0)) faces.push(tri);
+      }
+    }
+    working.dispose();
+  });
+  const info = edgeMode.value === 'quads' ? `${quadPairs.toLocaleString()} reconstructed quads • ${unmatchedTriangles.toLocaleString()} unmatched triangles` : `${faces.length.toLocaleString()} source faces`;
+  return { faces, info };
+}
+function applySymmetryToEdges(edges) {
+  if (!symmetry.checked || !sourceRoot) return { edges, mirrored: false, centre: null };
+  const axis = symmetryAxis.value;
+  const axisIndex = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+  const centre = symmetryCentre();
+  const c = centre.getComponent(axisIndex);
+  const box = sourceBounds();
+  const span = box.getSize(new THREE.Vector3()).getComponent(axisIndex);
+  const tolerance = Math.max(span * 1e-7, 1e-7);
+  const positive = symmetrySide.value === 'positive';
+  const kept = new Map();
+  const add = (a,b) => addEdge(kept,a,b);
+  for (const [a0,b0] of edges) {
+    const midpoint = (a0.getComponent(axisIndex) + b0.getComponent(axisIndex)) * 0.5;
+    if ((positive && midpoint < c - tolerance) || (!positive && midpoint > c + tolerance)) continue;
+    const a = a0.clone(), b = b0.clone();
+    add(a,b);
+    const aOn = Math.abs(a.getComponent(axisIndex)-c) <= tolerance;
+    const bOn = Math.abs(b.getComponent(axisIndex)-c) <= tolerance;
+    if (aOn && bOn) continue;
+    const ma = a.clone(), mb = b.clone();
+    ma.setComponent(axisIndex, 2*c - ma.getComponent(axisIndex));
+    mb.setComponent(axisIndex, 2*c - mb.getComponent(axisIndex));
+    add(ma,mb);
+  }
+  return { edges: [...kept.values()], mirrored: true, centre };
+}
+function applySymmetryToFaces(faces) {
+  if (!symmetry.checked || !sourceRoot) return { faces, mirrored: false, centre: null };
+  const axis = symmetryAxis.value;
+  const axisIndex = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+  const centre = symmetryCentre();
+  const c = centre.getComponent(axisIndex);
+  const box = sourceBounds();
+  const span = box.getSize(new THREE.Vector3()).getComponent(axisIndex);
+  const tolerance = Math.max(span * 1e-7, 1e-7);
+  const positive = symmetrySide.value === 'positive';
+  const result = [];
+  for (const face0 of faces) {
+    const centroid = face0.reduce((acc,p)=>acc.add(p), new THREE.Vector3()).multiplyScalar(1/face0.length);
+    if ((positive && centroid.getComponent(axisIndex) < c - tolerance) || (!positive && centroid.getComponent(axisIndex) > c + tolerance)) continue;
+    const face = face0.map((p)=>p.clone());
+    result.push(face);
+    if (face.every((p) => Math.abs(p.getComponent(axisIndex) - c) <= tolerance)) continue;
+    const mirrored = face.map((p) => {
+      const q = p.clone();
+      q.setComponent(axisIndex, 2*c - q.getComponent(axisIndex));
+      return q;
+    }).reverse();
+    result.push(mirrored);
+  }
+  return { faces: result, mirrored: true, centre };
+}
+function vertexKey(v) { return `${v.x.toPrecision(9)},${v.y.toPrecision(9)},${v.z.toPrecision(9)}`; }
+function buildJunctionData(edges) {
+  const nodes = new Map();
+  const register = (point, edgeIndex, endpoint) => {
+    const key = vertexKey(point);
+    if (!nodes.has(key)) nodes.set(key, { point: point.clone(), refs: [] });
+    nodes.get(key).refs.push({ edgeIndex, endpoint });
+  };
+  edges.forEach(([a,b], i) => { register(a,i,0); register(b,i,1); });
+  const cuts = edges.map(() => [null, null]);
+  const hubs = [];
+  const mode = junctionMode.value;
+  for (const node of nodes.values()) {
+    const degree = node.refs.length;
+    const directions = node.refs.map((ref) => edges[ref.edgeIndex][1-ref.endpoint].clone().sub(node.point).normalize());
+    if ((mode === 'mitre' || mode === 'hybrid') && degree === 2) {
+      const d0 = directions[0], d1 = directions[1];
+      const dot = THREE.MathUtils.clamp(d0.dot(d1), -1, 1);
+      const turnAngle = Math.acos(dot);
+      if (turnAngle > THREE.MathUtils.degToRad(8)) {
+        const n0 = d0.clone().sub(d1).normalize();
+        const n1 = d1.clone().sub(d0).normalize();
+        if (Math.abs(n0.dot(d0)) > 0.12 && Math.abs(n1.dot(d1)) > 0.12) {
+          cuts[node.refs[0].edgeIndex][node.refs[0].endpoint] = n0;
+          cuts[node.refs[1].edgeIndex][node.refs[1].endpoint] = n1;
+        }
+      }
+    }
+    if ((mode === 'hubs' || mode === 'hybrid') && degree >= 3) hubs.push({ point: node.point.clone(), degree });
+    if (mode === 'hubs' && degree === 2) hubs.push({ point: node.point.clone(), degree });
+  }
+  return { cuts, hubs };
+}
+function makeBasis(axis) {
+  const helper = Math.abs(axis.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+  const u = new THREE.Vector3().crossVectors(axis, helper).normalize();
+  const v = new THREE.Vector3().crossVectors(axis, u).normalize();
+  return {u,v};
+}
+function facetedTubeForEdge(a, b, cutA = null, cutB = null) {
+  const axis = b.clone().sub(a);
+  const length = axis.length();
+  axis.normalize();
+  const radialSegments = Number(sides.value);
+  const radius = Number(diameter.value) / 2;
+  const {u,v} = makeBasis(axis);
+  const positions = [];
+  const indices = [];
+  const maxShift = Math.min(length * 0.42, radius * 5);
+  const ringPoint = (origin, normal, radial) => {
+    if (!normal || Math.abs(normal.dot(axis)) < 0.12) return origin.clone().add(radial);
+    let shift = -normal.dot(radial) / normal.dot(axis);
+    shift = THREE.MathUtils.clamp(shift, -maxShift, maxShift);
+    return origin.clone().add(radial).addScaledVector(axis, shift);
+  };
+  for (let ring=0; ring<2; ring++) {
+    const origin = ring === 0 ? a : b;
+    const normal = ring === 0 ? cutA : cutB;
+    for (let i=0; i<radialSegments; i++) {
+      const theta = i / radialSegments * Math.PI * 2;
+      const radial = u.clone().multiplyScalar(Math.cos(theta)*radius).addScaledVector(v, Math.sin(theta)*radius);
+      const p = ringPoint(origin, normal, radial);
+      positions.push(p.x,p.y,p.z);
+    }
+  }
+  for (let i=0;i<radialSegments;i++) {
+    const j=(i+1)%ra
