@@ -1,8 +1,8 @@
 {
   "name":"Mesh Line Replacer WIP",
   "short_name":"Mesh WIP",
-  "version":"0.9.0-wip.4",
-  "description":"Work-in-progress Mesh Line Replacer build with unified FILE, MODE and VIEW popover styling and left-anchored menu behaviour.",
+  "version":"0.9.0-wip.5",
+  "description":"Work-in-progress Mesh Line Replacer build consolidating FILE, MODE and VIEW functions, fixing instance-object import routing, removing duplicate export/About controls, and reducing right-panel scrolling.",
   "start_url":"./index.html",
   "display":"standalone",
   "background_color":"#111318",
