@@ -1,8 +1,8 @@
 {
   "name": "Mesh Line Replacer WIP",
   "short_name": "Mesh WIP",
-  "version": "0.8.9-wip.1",
-  "description": "Work-in-progress Mesh Line Replacer build with five-step topology-aware instance density control.",
+  "version": "0.8.9-wip.2",
+  "description": "Work-in-progress Mesh Line Replacer build with ten-division topology-aware instance density control from -5 to +5.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#111318",
