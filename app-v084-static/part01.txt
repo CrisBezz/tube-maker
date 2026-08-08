@@ -1,0 +1,90 @@
+        <div class="control"><label for="solidDirection">Offset direction</label><select id="solidDirection"><option value="centred">Centred</option><option value="outward">Outward</option><option value="inward">Inward</option></select></div>
+        <label class="check"><input id="autoLimitThickness" type="checkbox" checked /> Auto-limit thickness on short edges</label>
+        <p class="note">The inset web is duplicated and offset along averaged vertex normals. All open boundaries, including hole boundaries, are bridged to create one closed mesh while keeping the openings clear.</p>
+      </div>
+      <div id="torusSection" class="section hidden">
+        <h2>Torus per face</h2>
+        <div class="control"><label for="torusSizeMode">Size mode</label><select id="torusSizeMode"><option value="relative">Relative to each face</option><option value="constant">Constant absolute size</option></select></div>
+        <div id="torusRelativeSizeControls">
+          <div class="control"><label for="torusRingScale">Ring radius</label><output id="torusRingScaleOut">0.68×</output><input id="torusRingScale" type="range" min="0.10" max="1.20" value="0.68" step="0.01" /></div>
+          <div class="control"><label for="torusTubeScale">Tube radius</label><output id="torusTubeScaleOut">0.14×</output><input id="torusTubeScale" type="range" min="0.02" max="0.50" value="0.14" step="0.01" /></div>
+        </div>
+        <div id="torusConstantSizeControls" class="hidden">
+          <div class="control"><label for="torusConstantRing">Constant ring radius</label><input id="torusConstantRing" type="number" min="0.0001" step="0.01" value="0.25" inputmode="decimal" /></div>
+          <div class="control"><label for="torusConstantTube">Constant tube radius</label><input id="torusConstantTube" type="number" min="0.0001" step="0.01" value="0.05" inputmode="decimal" /></div>
+        </div>
+        <div class="control"><label for="torusNormalMode">Normal direction</label><select id="torusNormalMode"><option value="source">As source</option><option value="outward" selected>Force outward</option><option value="inward">Force inward</option></select></div>
+        <div class="control"><label for="torusRingSegments">Ring segments</label><output id="torusRingSegmentsOut">24</output><input id="torusRingSegments" type="range" min="6" max="64" value="24" step="1" /></div>
+        <div class="control"><label for="torusTubeSegments">Tube facets</label><output id="torusTubeSegmentsOut">8</output><input id="torusTubeSegments" type="range" min="3" max="24" value="8" step="1" /></div>
+        <div class="control"><label for="torusNormalOffset">Normal offset</label><input id="torusNormalOffset" type="number" step="0.001" value="0" inputmode="decimal" /></div>
+        <div class="control"><label for="torusTiltX">Tilt X</label><output id="torusTiltXOut">0°</output><input id="torusTiltX" type="range" min="-90" max="90" value="0" step="1" /></div>
+        <div class="control"><label for="torusTiltY">Tilt Y</label><output id="torusTiltYOut">0°</output><input id="torusTiltY" type="range" min="-90" max="90" value="0" step="1" /></div>
+        <label class="check"><input id="torusFlatShading" type="checkbox" /> Faceted shading</label>
+        <div class="control"><label for="torusExportMode">GLB export</label><select id="torusExportMode"><option value="instances" selected>Nomad shared nodes</option><option value="baked">Bake copies</option></select></div>
+        <p class="note">The viewport uses one shared master torus with per-face transforms. Nomad shared nodes exports many ordinary glTF nodes that all reference one shared torus mesh, matching Nomad Sculpt’s own instance export structure. Bake copies remains the compatibility fallback.</p>
+      </div>
+      <div class="section">
+        <h2>Display</h2>
+        <label class="check"><input id="showSource" type="checkbox" checked /> Show source model</label>
+      </div>
+      <div class="section">
+        <h2>Symmetry</h2>
+        <label class="check"><input id="symmetry" type="checkbox" /> Make generated result symmetrical</label>
+        <div class="control"><label for="symmetryAxis">Mirror plane</label><select id="symmetryAxis"><option value="x">X centre plane (left/right)</option><option value="y">Y centre plane (top/bottom)</option><option value="z">Z centre plane (front/back)</option></select></div>
+        <div class="control"><label for="symmetrySide">Source half</label><select id="symmetrySide"><option value="positive">Positive side</option><option value="negative">Negative side</option></select></div>
+        <label class="check"><input id="showSymmetryPlane" type="checkbox" checked /> Show centre plane</label>
+        <p class="note">The selected half is kept and mirrored across the source model’s bounding-box centre. Geometry lying on the centre plane is only generated once.</p>
+      </div>
+      <div id="junctionSection" class="section">
+        <h2>Tube junctions</h2>
+        <div class="control"><label for="junctionMode">Junction style</label><select id="junctionMode"><option value="overlap">Simple overlaps</option><option value="mitre">Mitred two-way corners</option><option value="hubs">Welded node hubs</option><option value="hybrid" selected>Mitres + welded hubs</option></select></div>
+        <div class="control"><label for="hubScale">Hub diameter multiplier</label><output id="hubScaleOut">1.35×</output><input id="hubScale" type="range" min="1" max="2.5" value="1.35" step="0.05" /></div>
+        <div class="control"><label for="hubDetail">Hub detail</label><select id="hubDetail"><option value="0">Low-poly</option><option value="1" selected>Medium</option><option value="2">High</option></select></div>
+      </div>
+    </aside>
+  </main>
+  <footer class="status"><span id="status">Ready</span><span class="status-right"><span id="stats"></span><span class="version">v0.8.4</span></span></footer>
+</div>
+<dialog id="aboutDialog">
+  <div class="about-head"><h2>Mesh Line Replacer</h2><button id="closeAboutBtn" class="secondary">Close</button></div>
+  <div class="about-body">
+    <span class="about-version">Version 0.8.4</span>
+    <p>A touch-friendly Safari modelling utility for iPad. Imported models are processed locally on the device.</p>
+    <h3>Current tools</h3>
+    <ul><li>Faceted Tubes</li><li>Inset Surface Web</li><li>Solid Surface Web</li><li>Torus per Face (experimental)</li><li>Quad reconstruction and original OBJ quad support</li><li>Symmetry and GLB export</li></ul>
+    <h3>Version history</h3>
+    <ul>
+      <li><strong>v0.8.4</strong> — Nomad-compatible shared-node torus export</li>
+      <li><strong>v0.8.3</strong> — Shared master torus instances and instanced GLB export</li>
+      <li><strong>v0.8.2</strong> — Fixed local torus tilt, global normal direction and constant-size mode</li>
+      <li><strong>v0.8.1</strong> — Local X/Y torus tilt controls</li>
+      <li><strong>v0.8.0</strong> — Experimental Torus per Face mode</li>
+      <li><strong>v0.7.1</strong> — Bevelled watertight Solid Surface Web</li>
+      <li><strong>v0.7.0</strong> — Solid Surface Web</li>
+      <li><strong>v0.6.0</strong> — Stable Surface Web release</li>
+      <li><strong>v0.5.0</strong> — Inset Surface Web</li>
+      <li><strong>v0.4.0</strong> — Mitred and welded tube junctions</li>
+      <li><strong>v0.3.0</strong> — Symmetry</li>
+      <li><strong>v0.2.0</strong> — Quad reconstruction</li>
+      <li><strong>v0.1.0</strong> — First tube generator</li>
+    </ul>
+    <p>Built for Safari on iPad · © 2026</p>
+  </div>
+</dialog>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const $ = (s) => document.querySelector(s);
+const viewport = $('#viewport'), hint = $('#hint'), statusEl = $('#status'), statsEl = $('#stats');
+const fileInput = $('#fileInput'), generateBtn = $('#generateBtn'), exportBtn = $('#exportBtn'), exampleBtn = $('#exampleBtn');
+const aboutBtn = $('#aboutBtn'), aboutDialog = $('#aboutDialog'), closeAboutBtn = $('#closeAboutBtn');
+const replaceMode = $('#replaceMode');
+const edgeMode = $('#edgeMode'), angle = $('#angle'), angleOut = $('#angleOut'), quadAngle = $('#quadAngle'), quadAngleOut = $('#quadAngleOut'), unmatched = $('#unmatched'), minLength = $('#minLength');
+const diameter = $('#diameter'), sides = $('#sides'), sidesOut = $('#sidesOut'), caps = $('#caps'), showSource = $('#showSource');
+const webWidth = $('#webWidth'), doubleSidedWeb = $('#doubleSidedWeb');
