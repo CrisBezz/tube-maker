@@ -1,0 +1,316 @@
+
+// v0.8.8-wip.1 — viewport diagnostic modes only (does not alter export geometry)
+const VIEW_WIP_VERSION = '0.8.8-wip.1';
+document.title = `Mesh Line Replacer v${VIEW_WIP_VERSION}`;
+const viewVersionEl = document.querySelector('.version');
+if (viewVersionEl) viewVersionEl.textContent = `v${VIEW_WIP_VERSION}`;
+const viewAboutVersion = document.querySelector('.about-version');
+if (viewAboutVersion) viewAboutVersion.textContent = `Version ${VIEW_WIP_VERSION}`;
+const viewAppTitle = document.querySelector('.title');
+if (viewAppTitle) viewAppTitle.textContent = 'Mesh Line Replacer · WIP';
+const viewAboutBody = document.querySelector('.about-body');
+if (viewAboutBody) {
+  const lists = viewAboutBody.querySelectorAll('ul');
+  if (lists.length > 1 && !viewAboutBody.textContent.includes('v0.8.8-wip.1')) {
+    const li = document.createElement('li');
+    li.innerHTML = '<strong>v0.8.8-wip.1</strong> — Solid, wireframe, face-group, normal-orientation and mesh-analysis viewport modes';
+    lists[1].prepend(li);
+  }
+}
+
+const displaySection = showSource?.closest('.section');
+const viewSection = document.createElement('div');
+viewSection.className = 'section';
+viewSection.id = 'diagnosticViewSection';
+viewSection.innerHTML = `
+  <h2>View mode</h2>
+  <div class="control"><label for="viewTarget">View target</label><select id="viewTarget"><option value="result" selected>Generated result</option><option value="source">Source model</option><option value="both">Both</option></select></div>
+  <div class="control"><label for="baseViewMode">Base view</label><select id="baseViewMode"><option value="solid" selected>Solid</option><option value="solidWire">Solid + Wire</option><option value="wire">Wireframe</option><option value="faceGroups">Face Groups</option><option value="normalOrientation">Normal Orientation</option><option value="analysis">Mesh Analysis</option></select></div>
+  <label class="check"><input id="overlayWire" type="checkbox" /> Wireframe overlay</label>
+  <label class="check"><input id="overlayFaceNormals" type="checkbox" /> Face normal arrows</label>
+  <label class="check"><input id="overlayVertexNormals" type="checkbox" /> Vertex normal arrows</label>
+  <div class="control"><label for="normalLength">Normal length</label><output id="normalLengthOut">2.5%</output><input id="normalLength" type="range" min="0.5" max="12" value="2.5" step="0.5" /></div>
+  <p class="note">Display-only diagnostics. Export geometry and materials remain unchanged. Mesh Analysis highlights boundary edges red and non-manifold edges magenta.</p>
+`;
+if (displaySection) displaySection.insertAdjacentElement('afterend', viewSection);
+else document.querySelector('.panel')?.appendChild(viewSection);
+
+const viewTarget = $('#viewTarget');
+const baseViewMode = $('#baseViewMode');
+const overlayWire = $('#overlayWire');
+const overlayFaceNormals = $('#overlayFaceNormals');
+const overlayVertexNormals = $('#overlayVertexNormals');
+const normalLength = $('#normalLength');
+const normalLengthOut = $('#normalLengthOut');
+
+const viewHelpers = new THREE.Group();
+viewHelpers.name = 'ViewportDiagnostics';
+scene.add(viewHelpers);
+const originalViewState = new WeakMap();
+const VIEW_MAX_TRIANGLES = 40000;
+const VIEW_MAX_NORMALS = 16000;
+const VIEW_MAX_INSTANCE_HELPERS = 1500;
+
+function disposeViewMaterial(material) {
+  if (Array.isArray(material)) material.forEach((m) => m?.dispose?.());
+  else material?.dispose?.();
+}
+function disposeViewHelperObject(obj) {
+  obj.traverse?.((child) => {
+    child.geometry?.dispose?.();
+    disposeViewMaterial(child.material);
+  });
+  obj.removeFromParent?.();
+}
+function clearViewHelpers() {
+  while (viewHelpers.children.length) disposeViewHelperObject(viewHelpers.children[viewHelpers.children.length - 1]);
+}
+function rememberViewState(mesh) {
+  if (!originalViewState.has(mesh)) originalViewState.set(mesh, { material: mesh.material, geometry: mesh.geometry });
+}
+function restoreViewState() {
+  const roots = [sourceRoot, resultRoot].filter(Boolean);
+  for (const root of roots) root.traverse((obj) => {
+    if (!obj.isMesh && !obj.isInstancedMesh) return;
+    const state = originalViewState.get(obj);
+    if (!state) return;
+    if (obj.material !== state.material) disposeViewMaterial(obj.material);
+    if (obj.geometry !== state.geometry) obj.geometry?.dispose?.();
+    obj.material = state.material;
+    obj.geometry = state.geometry;
+  });
+  clearViewHelpers();
+}
+function viewRoots() {
+  if (viewTarget.value === 'source') return sourceRoot ? [sourceRoot] : [];
+  if (viewTarget.value === 'both') return [sourceRoot, resultRoot].filter(Boolean);
+  return resultRoot ? [resultRoot] : (sourceRoot ? [sourceRoot] : []);
+}
+function geometryDiagonal(geometry) {
+  geometry.computeBoundingBox?.();
+  if (!geometry.boundingBox || geometry.boundingBox.isEmpty()) return 1;
+  return Math.max(geometry.boundingBox.getSize(new THREE.Vector3()).length(), 1e-6);
+}
+function triangleList(geometry) {
+  const p = geometry?.getAttribute?.('position');
+  if (!p) return [];
+  const idx = geometry.index;
+  const count = idx ? idx.count : p.count;
+  const out = [];
+  for (let i = 0; i + 2 < count && out.length < VIEW_MAX_TRIANGLES; i += 3) {
+    out.push([idx ? idx.getX(i) : i, idx ? idx.getX(i + 1) : i + 1, idx ? idx.getX(i + 2) : i + 2]);
+  }
+  return out;
+}
+function localVertexKey(p, i, tolerance) {
+  return `${Math.round(p.getX(i)/tolerance)},${Math.round(p.getY(i)/tolerance)},${Math.round(p.getZ(i)/tolerance)}`;
+}
+function buildTopologyDiagnostic(geometry) {
+  const p = geometry?.getAttribute?.('position');
+  if (!p) return { boundary: null, nonManifold: null, boundaryCount: 0, nonManifoldCount: 0 };
+  const tris = triangleList(geometry);
+  const tol = Math.max(geometryDiagonal(geometry) * 1e-7, 1e-9);
+  const edgeMap = new Map();
+  const add = (ia, ib) => {
+    const ka = localVertexKey(p, ia, tol), kb = localVertexKey(p, ib, tol);
+    const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    let rec = edgeMap.get(key);
+    if (!rec) { rec = { count: 0, ia, ib }; edgeMap.set(key, rec); }
+    rec.count++;
+  };
+  for (const t of tris) { add(t[0],t[1]); add(t[1],t[2]); add(t[2],t[0]); }
+  const boundaryPos = [], nonPos = [];
+  let boundaryCount = 0, nonManifoldCount = 0;
+  for (const rec of edgeMap.values()) {
+    const target = rec.count === 1 ? boundaryPos : rec.count > 2 ? nonPos : null;
+    if (!target) continue;
+    if (rec.count === 1) boundaryCount++; else nonManifoldCount++;
+    target.push(p.getX(rec.ia),p.getY(rec.ia),p.getZ(rec.ia),p.getX(rec.ib),p.getY(rec.ib),p.getZ(rec.ib));
+  }
+  const make = (arr, color) => {
+    if (!arr.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(arr,3));
+    return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.98 }));
+  };
+  return { boundary: make(boundaryPos, 0xff3838), nonManifold: make(nonPos, 0xff2dce), boundaryCount, nonManifoldCount };
+}
+function makeWireHelper(mesh) {
+  const state = originalViewState.get(mesh) || { geometry: mesh.geometry };
+  const edgeGeo = new THREE.WireframeGeometry(state.geometry);
+  const mat = new THREE.LineBasicMaterial({ color: 0x16191f, transparent: true, opacity: 0.72 });
+  const lines = new THREE.LineSegments(edgeGeo, mat);
+  lines.renderOrder = 12;
+  return lines;
+}
+function copyMeshTransformToHelper(mesh, helper, matrixOverride = null) {
+  helper.matrixAutoUpdate = false;
+  if (matrixOverride) helper.matrix.multiplyMatrices(mesh.matrixWorld, matrixOverride);
+  else helper.matrix.copy(mesh.matrixWorld);
+}
+function addHelperForMeshInstances(mesh, makeHelper) {
+  if (!mesh.isInstancedMesh) {
+    const helper = makeHelper(); if (!helper) return;
+    copyMeshTransformToHelper(mesh, helper); viewHelpers.add(helper); return;
+  }
+  const matrix = new THREE.Matrix4();
+  const count = Math.min(mesh.count, VIEW_MAX_INSTANCE_HELPERS);
+  for (let i = 0; i < count; i++) {
+    mesh.getMatrixAt(i, matrix);
+    const helper = makeHelper(); if (!helper) continue;
+    copyMeshTransformToHelper(mesh, helper, matrix); viewHelpers.add(helper);
+  }
+}
+function makeNormalLines(mesh, vertexMode) {
+  const state = originalViewState.get(mesh) || { geometry: mesh.geometry };
+  const g = state.geometry;
+  const p = g?.getAttribute?.('position');
+  if (!p) return null;
+  if (!g.getAttribute('normal')) g.computeVertexNormals();
+  const n = g.getAttribute('normal');
+  const len = geometryDiagonal(g) * (Number(normalLength.value) / 100);
+  const pos = [], col = [];
+  if (vertexMode) {
+    const step = Math.max(1, Math.ceil(p.count / VIEW_MAX_NORMALS));
+    for (let i = 0; i < p.count; i += step) {
+      const a = new THREE.Vector3(p.getX(i),p.getY(i),p.getZ(i));
+      const b = a.clone().add(new THREE.Vector3(n.getX(i),n.getY(i),n.getZ(i)).normalize().multiplyScalar(len));
+      pos.push(a.x,a.y,a.z,b.x,b.y,b.z); col.push(0.2,0.75,1,0.2,0.75,1);
+    }
+  } else {
+    const tris = triangleList(g);
+    const step = Math.max(1, Math.ceil(tris.length / VIEW_MAX_NORMALS));
+    for (let ti = 0; ti < tris.length; ti += step) {
+      const t = tris[ti];
+      const a = new THREE.Vector3(p.getX(t[0]),p.getY(t[0]),p.getZ(t[0]));
+      const b = new THREE.Vector3(p.getX(t[1]),p.getY(t[1]),p.getZ(t[1]));
+      const c = new THREE.Vector3(p.getX(t[2]),p.getY(t[2]),p.getZ(t[2]));
+      const centre = a.clone().add(b).add(c).multiplyScalar(1/3);
+      const normal = b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+      const end = centre.clone().addScaledVector(normal,len);
+      pos.push(centre.x,centre.y,centre.z,end.x,end.y,end.z); col.push(0.3,1,0.45,0.3,1,0.45);
+    }
+  }
+  if (!pos.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col,3));
+  return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true, depthTest:false, transparent:true, opacity:0.9 }));
+}
+function makeFaceGroupGeometry(geometry) {
+  const p = geometry?.getAttribute?.('position'); if (!p) return null;
+  const source = geometry.toNonIndexed();
+  const sp = source.getAttribute('position');
+  const triCount = Math.floor(sp.count / 3);
+  const colors = new Float32Array(sp.count * 3);
+  const palette = [
+    [0.94,0.35,0.32],[0.24,0.66,0.96],[0.35,0.82,0.46],[0.95,0.72,0.25],
+    [0.68,0.43,0.94],[0.20,0.82,0.78],[0.95,0.48,0.72],[0.64,0.72,0.28]
+  ];
+  // Diagnostic face groups: geometry groups/material ranges when present; otherwise coplanar-normal families.
+  const groupForTriangle = new Int32Array(triCount); groupForTriangle.fill(-1);
+  if (geometry.groups?.length && geometry.index) {
+    for (let gi=0; gi<geometry.groups.length; gi++) {
+      const gr=geometry.groups[gi];
+      const start=Math.floor(gr.start/3), end=Math.min(triCount,Math.ceil((gr.start+gr.count)/3));
+      for(let t=start;t<end;t++) groupForTriangle[t]=gi;
+    }
+  }
+  for (let t=0;t<triCount;t++) {
+    let group=groupForTriangle[t];
+    if (group<0) {
+      const i=t*3;
+      const a=new THREE.Vector3(sp.getX(i),sp.getY(i),sp.getZ(i));
+      const b=new THREE.Vector3(sp.getX(i+1),sp.getY(i+1),sp.getZ(i+1));
+      const c=new THREE.Vector3(sp.getX(i+2),sp.getY(i+2),sp.getZ(i+2));
+      const normal=b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+      const ax=Math.abs(normal.x), ay=Math.abs(normal.y), az=Math.abs(normal.z);
+      group = ax>=ay&&ax>=az ? (normal.x>=0?0:1) : ay>=ax&&ay>=az ? (normal.y>=0?2:3) : (normal.z>=0?4:5);
+    }
+    const color=palette[group%palette.length];
+    for(let k=0;k<3;k++){const j=(t*3+k)*3;colors[j]=color[0];colors[j+1]=color[1];colors[j+2]=color[2];}
+  }
+  source.setAttribute('color',new THREE.BufferAttribute(colors,3));
+  return source;
+}
+function makeNormalOrientationGeometry(geometry) {
+  const source = geometry.toNonIndexed();
+  const p=source.getAttribute('position'); if(!p)return source;
+  const colors=new Float32Array(p.count*3);
+  source.computeBoundingBox();
+  const centre=source.boundingBox?.getCenter(new THREE.Vector3())||new THREE.Vector3();
+  for(let i=0;i+2<p.count;i+=3){
+    const a=new THREE.Vector3(p.getX(i),p.getY(i),p.getZ(i));
+    const b=new THREE.Vector3(p.getX(i+1),p.getY(i+1),p.getZ(i+1));
+    const c=new THREE.Vector3(p.getX(i+2),p.getY(i+2),p.getZ(i+2));
+    const centroid=a.clone().add(b).add(c).multiplyScalar(1/3);
+    const normal=b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+    const outward=normal.dot(centroid.clone().sub(centre))>=0;
+    const color=outward?[0.22,0.9,0.36]:[0.96,0.22,0.22];
+    for(let k=0;k<3;k++){const j=(i+k)*3;colors[j]=color[0];colors[j+1]=color[1];colors[j+2]=color[2];}
+  }
+  source.setAttribute('color',new THREE.BufferAttribute(colors,3));
+  return source;
+}
+function applyBaseViewToMesh(mesh, mode) {
+  rememberViewState(mesh);
+  const state=originalViewState.get(mesh);
+  if(mode==='solid') return;
+  if(mode==='wire') {
+    mesh.material=new THREE.MeshBasicMaterial({color:0xd7dce7,wireframe:true,transparent:true,opacity:0.95});
+    return;
+  }
+  if(mode==='faceGroups') {
+    mesh.geometry=makeFaceGroupGeometry(state.geometry)||state.geometry;
+    mesh.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.82,metalness:0,side:THREE.DoubleSide,flatShading:true});
+    return;
+  }
+  if(mode==='normalOrientation') {
+    mesh.geometry=makeNormalOrientationGeometry(state.geometry)||state.geometry;
+    mesh.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.8,metalness:0,side:THREE.DoubleSide,flatShading:true});
+    return;
+  }
+  if(mode==='analysis') {
+    mesh.material=new THREE.MeshStandardMaterial({color:0x9ca6b5,roughness:0.85,metalness:0,side:THREE.DoubleSide,transparent:true,opacity:0.72});
+  }
+}
+function applyViewMode() {
+  restoreViewState();
+  const roots=viewRoots();
+  const mode=baseViewMode.value;
+  let boundaryTotal=0, nonManifoldTotal=0;
+  for(const root of roots){
+    root.updateMatrixWorld(true);
+    root.traverse((mesh)=>{
+      if(!mesh.isMesh&&!mesh.isInstancedMesh)return;
+      applyBaseViewToMesh(mesh,mode);
+      const addWire = mode==='solidWire' || overlayWire.checked;
+      if(addWire) addHelperForMeshInstances(mesh,()=>makeWireHelper(mesh));
+      if(overlayFaceNormals.checked) addHelperForMeshInstances(mesh,()=>makeNormalLines(mesh,false));
+      if(overlayVertexNormals.checked) addHelperForMeshInstances(mesh,()=>makeNormalLines(mesh,true));
+      if(mode==='analysis') {
+        const diagnostic=buildTopologyDiagnostic((originalViewState.get(mesh)||{}).geometry||mesh.geometry);
+        boundaryTotal+=diagnostic.boundaryCount; nonManifoldTotal+=diagnostic.nonManifoldCount;
+        if(diagnostic.boundary) addHelperForMeshInstances(mesh,()=>diagnostic.boundary.clone());
+        if(diagnostic.nonManifold) addHelperForMeshInstances(mesh,()=>diagnostic.nonManifold.clone());
+        diagnostic.boundary?.geometry?.dispose?.(); diagnostic.boundary?.material?.dispose?.();
+        diagnostic.nonManifold?.geometry?.dispose?.(); diagnostic.nonManifold?.material?.dispose?.();
+      }
+    });
+  }
+  if(mode==='analysis') setStatus(`Mesh Analysis • ${boundaryTotal.toLocaleString()} boundary edges • ${nonManifoldTotal.toLocaleString()} non-manifold edges`);
+}
+
+[viewTarget,baseViewMode,overlayWire,overlayFaceNormals,overlayVertexNormals].forEach((el)=>el.addEventListener('change',applyViewMode));
+normalLength.addEventListener('input',()=>{normalLengthOut.value=`${Number(normalLength.value).toFixed(1)}%`;if(overlayFaceNormals.checked||overlayVertexNormals.checked)applyViewMode();});
+showSource.addEventListener('change',()=>setTimeout(applyViewMode,0));
+generateBtn.addEventListener('click',()=>setTimeout(applyViewMode,80));
+fileInput.addEventListener('change',()=>setTimeout(applyViewMode,250));
+exampleBtn.addEventListener('click',()=>setTimeout(applyViewMode,80));
+replaceMode.addEventListener('change',()=>setTimeout(applyViewMode,0));
+
+// Keep display state coherent after async generation/import completes without touching the animation loop.
+let lastViewSource=null,lastViewResult=null;
+setInterval(()=>{
+  if(sourceRoot!==lastViewSource||resultRoot!==lastViewResult){lastViewSource=sourceRoot;lastViewResult=resultRoot;applyViewMode();}
+},500);
