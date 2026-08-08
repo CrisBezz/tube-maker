@@ -1,0 +1,125 @@
+
+// v0.8.7-wip.1 — grouped shared-instance GLB export
+const GROUPED_WIP_VERSION = '0.8.7-wip.1';
+
+document.title = `Mesh Line Replacer v${GROUPED_WIP_VERSION}`;
+const groupedVisibleVersion = document.querySelector('.version');
+if (groupedVisibleVersion) groupedVisibleVersion.textContent = `v${GROUPED_WIP_VERSION}`;
+const groupedAboutVersion = document.querySelector('.about-version');
+if (groupedAboutVersion) groupedAboutVersion.textContent = `Version ${GROUPED_WIP_VERSION}`;
+const groupedAppTitle = document.querySelector('.title');
+if (groupedAppTitle) groupedAppTitle.textContent = 'Mesh Line Replacer · WIP';
+const groupedAboutBody = document.querySelector('.about-body');
+if (groupedAboutBody) {
+  const lists = groupedAboutBody.querySelectorAll('ul');
+  if (lists.length > 1 && !groupedAboutBody.textContent.includes('v0.8.7-wip.1')) {
+    const li = document.createElement('li');
+    li.innerHTML = '<strong>v0.8.7-wip.1</strong> — Grouped Nomad-compatible shared-instance GLB hierarchy';
+    lists[1].prepend(li);
+  }
+}
+
+if (torusExportMode?.options?.length) {
+  const opt = [...torusExportMode.options].find((o) => o.value === 'instances');
+  if (opt) opt.textContent = 'Grouped Nomad instances';
+}
+if (typeof customExportMode !== 'undefined' && customExportMode?.options?.length) {
+  const opt = [...customExportMode.options].find((o) => o.value === 'instances');
+  if (opt) opt.textContent = 'Grouped Nomad instances';
+}
+
+function groupedNomadExtras(matrix, selected = false) {
+  return nomadNodeExtras(matrix, selected);
+}
+
+buildNomadSharedNodeScene = function(instancedMesh) {
+  const exportScene = new THREE.Scene();
+  exportScene.name = 'NomadGroupedTorusInstances';
+
+  const group = new THREE.Group();
+  group.name = 'Generated Instances';
+  group.matrixAutoUpdate = false;
+  group.matrix.identity();
+  group.userData = groupedNomadExtras(group.matrix, false);
+  exportScene.add(group);
+
+  const sharedGeometry = instancedMesh.geometry;
+  const sharedMaterial = instancedMesh.material;
+  const matrix = new THREE.Matrix4();
+  let made = 0;
+
+  for (let i = 0; i < instancedMesh.count; i++) {
+    instancedMesh.getMatrixAt(i, matrix);
+    const e = matrix.elements;
+    const sx = Math.hypot(e[0], e[1], e[2]);
+    const sy = Math.hypot(e[4], e[5], e[6]);
+    const sz = Math.hypot(e[8], e[9], e[10]);
+    if (sx < 1e-10 || sy < 1e-10 || sz < 1e-10) continue;
+
+    const node = new THREE.Mesh(sharedGeometry, sharedMaterial);
+    node.name = `Torus ${String(made + 1).padStart(3, '0')}`;
+    node.matrixAutoUpdate = false;
+    node.matrix.copy(matrix);
+    node.userData = groupedNomadExtras(matrix, false);
+    group.add(node);
+    made++;
+  }
+
+  exportScene.userData = {
+    meshLineReplacer: {
+      version: GROUPED_WIP_VERSION,
+      instanceMode: 'shared-gltf-nodes',
+      hierarchy: 'grouped',
+      groupName: group.name,
+      instanceCount: made,
+      target: 'Nomad Sculpt'
+    }
+  };
+  return exportScene;
+};
+
+if (typeof buildCustomSharedNodeExport !== 'undefined') {
+  buildCustomSharedNodeExport = function() {
+    const exportScene = new THREE.Scene();
+    exportScene.name = 'NomadGroupedImportedMasterInstances';
+
+    const group = new THREE.Group();
+    group.name = `${customMasterName || 'Imported Master'} Instances`;
+    group.matrixAutoUpdate = false;
+    group.matrix.identity();
+    group.userData = groupedNomadExtras(group.matrix, false);
+    exportScene.add(group);
+
+    const matrix = new THREE.Matrix4();
+    let childCount = 0;
+    const instancedParts = resultRoot.children.filter((c) => c.isInstancedMesh);
+
+    instancedParts.forEach((instanced, partIndex) => {
+      for (let i = 0; i < instanced.count; i++) {
+        instanced.getMatrixAt(i, matrix);
+        const mesh = new THREE.Mesh(instanced.geometry, instanced.material);
+        const baseName = instanced.name || customMasterName || `Master Part ${partIndex + 1}`;
+        mesh.name = `${baseName} ${String(i + 1).padStart(3, '0')}`;
+        mesh.matrixAutoUpdate = false;
+        mesh.matrix.copy(matrix);
+        mesh.userData = groupedNomadExtras(matrix, false);
+        group.add(mesh);
+        childCount++;
+      }
+    });
+
+    exportScene.userData = {
+      meshLineReplacer: {
+        version: GROUPED_WIP_VERSION,
+        instanceMode: 'shared-gltf-nodes',
+        hierarchy: 'grouped',
+        groupName: group.name,
+        master: customMasterName,
+        placementCount: resultRoot.userData?.customInstanceSet?.count || 0,
+        meshNodeCount: childCount,
+        target: 'Nomad Sculpt'
+      }
+    };
+    return exportScene;
+  };
+}
