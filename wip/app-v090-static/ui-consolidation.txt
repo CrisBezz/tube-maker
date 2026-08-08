@@ -1,0 +1,85 @@
+
+// v0.9.0-wip.5 — functional UI consolidation / de-duplication
+(function(){
+const VERSION='0.9.0-wip.5';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const style=document.createElement('style');style.textContent=`.mlr-consolidated-hidden{display:none!important}.mlr-filemenu .mlr-about-row{margin-top:0}.mlr-instance-name{font-size:12px;color:#aeb7c5;padding:5px 2px 2px}.mlr-empty-section{display:none!important}`;document.head.appendChild(style);
+
+// FILE: explicit source and instance-object routing.
+const filePop=document.querySelector('.mlr-filepop');
+if(filePop){
+  const sourceBtn=filePop.querySelector('button[data-act="source"]');
+  const masterBtn=filePop.querySelector('button[data-act="master"]');
+  if(sourceBtn){sourceBtn.textContent='Open Source Mesh…';sourceBtn.addEventListener('click',(e)=>{const input=document.getElementById('fileInput')||document.querySelector('input[type=file]:not(#customInstanceFile):not(#mlrProjectPicker)');if(input){e.stopImmediatePropagation();input.click();}},true)}
+  if(masterBtn){masterBtn.textContent='Import Instance Object…';masterBtn.addEventListener('click',(e)=>{const input=document.getElementById('customInstanceFile');if(input){e.stopImmediatePropagation();input.click();}else alert('Instance-object importer is not available in the current mode.');},true)}
+  const exportBtn=filePop.querySelector('button[data-act="export"]');if(exportBtn)exportBtn.textContent='Export GLB…';
+  const menu=filePop.querySelector('.mlr-filemenu');
+  if(menu&&!menu.querySelector('[data-act="about"]')){
+    const hr=document.createElement('hr');const about=document.createElement('button');about.type='button';about.dataset.act='about';about.className='mlr-about-row';about.textContent='About';menu.append(hr,about);
+    about.onclick=()=>{
+      const candidates=[...document.querySelectorAll('button,a')].filter(el=>el!==about&&/^about$/i.test((el.textContent||'').trim())&&!filePop.contains(el));
+      const native=candidates[0]||document.querySelector('#aboutBtn,.about-button,[data-action="about"]');
+      if(native){filePop.hidden=true;native.click();return;}
+      const body=document.querySelector('.about-body');if(body){alert(body.innerText);return;}
+      alert(`Mesh Line Replacer\nVersion ${VERSION}`);
+    };
+  }
+}
+
+// Remove duplicate top/right export and About actions; FILE is authoritative.
+const topbar=document.querySelector('.mlr-topbar');
+const duplicateButtons=[...document.querySelectorAll('button,a')];
+for(const el of duplicateButtons){
+  if(filePop?.contains(el))continue;
+  const txt=(el.textContent||'').trim().toLowerCase();
+  const id=(el.id||'').toLowerCase();
+  if(el.id==='mlrExport'||txt==='export'||txt==='export glb'||txt==='export glb…'||id==='exportbtn')el.classList.add('mlr-consolidated-hidden');
+  if(txt==='about'&&!el.closest('.about-dialog,.modal,.mlr-filepop'))el.classList.add('mlr-consolidated-hidden');
+}
+if(topbar){const exp=topbar.querySelector('#mlrExport');if(exp)exp.remove();}
+
+// VIEW is authoritative: move any remaining display/view controls out of the scrolling panel.
+const viewPop=document.querySelector('.mlr-viewpop2');const viewList=viewPop?.querySelector('#mlrViewList');
+if(viewList){
+  const knownIds=['viewMode','viewTarget','viewWireOverlay','viewFaceNormals','viewVertexNormals','viewNormalLength'];
+  for(const id of knownIds){const el=document.getElementById(id);if(!el)continue;const c=el.closest('.control');if(c&&!viewPop.contains(c))c.classList.add('mlr-consolidated-hidden');}
+  // Hide right-panel sections that are purely Display/View after their controls moved to VIEW.
+  for(const section of document.querySelectorAll('.section,section,.panel-section')){
+    if(viewPop.contains(section))continue;
+    const head=section.querySelector('h1,h2,h3,h4,summary');const ht=(head?.textContent||'').trim().toLowerCase();
+    if(ht==='display'||ht==='view'||ht==='view modes')section.classList.add('mlr-consolidated-hidden');
+  }
+}
+
+// Imported Instance mode: the actual import action lives in FILE; keep only a compact filename/status in the panel.
+const customSection=document.getElementById('customInstanceSection');
+if(customSection){
+  const importLabel=customSection.querySelector('label[for="customInstanceFile"]');
+  const importRow=importLabel?.parentElement;if(importRow)importRow.classList.add('mlr-consolidated-hidden');
+  const status=document.getElementById('customMasterStatus');if(status){status.classList.add('mlr-instance-name');status.textContent=status.textContent.replace('master object','instance object');}
+  const exportControl=document.getElementById('customExportMode')?.closest('.control');
+  // Keep export-mode selection because it changes export structure, but tuck it into Advanced rather than duplicating an Export action.
+  const advanced=[...customSection.querySelectorAll('details')].find(d=>/advanced/i.test(d.querySelector('summary')?.textContent||''));if(exportControl&&advanced)advanced.appendChild(exportControl);
+}
+
+// Hide duplicate source/import/export/about rows in scrolling panels by semantic text.
+for(const c of document.querySelectorAll('.control,.section>div,.toolbar-row,.actions')){
+  if(filePop?.contains(c)||viewPop?.contains(c)||topbar?.contains(c))continue;
+  const t=(c.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+  if(/^open source mesh/.test(t)||/^import master object/.test(t)||/^import instance object/.test(t)||(/^export glb/.test(t)&&!c.querySelector('select')))c.classList.add('mlr-consolidated-hidden');
+}
+
+// Prune empty wrappers/sections left behind by moved controls.
+function pruneEmpty(){for(const section of document.querySelectorAll('.section,section,.panel-section')){if(viewPop?.contains(section)||filePop?.contains(section))continue;const visible=[...section.children].filter(ch=>!ch.classList.contains('mlr-consolidated-hidden')&&getComputedStyle(ch).display!=='none'&&!/^h[1-6]$/i.test(ch.tagName));if(!visible.length)section.classList.add('mlr-empty-section');}}
+setTimeout(pruneEmpty,0);
+
+// More aggressive context sensitivity: hide inactive size branch rather than leaving it in the scroll.
+function contextRefresh(){
+  const pairs=[['torusSizeMode','torusRelativeControls','torusConstantControls'],['customSizeMode','customRelativeControls','customConstantControls']];
+  for(const [modeId,relId,constId] of pairs){const mode=document.getElementById(modeId),rel=document.getElementById(relId),con=document.getElementById(constId);if(!mode)continue;const isConst=mode.value==='constant';if(rel)rel.style.display=isConst?'none':'';if(con)con.style.display=isConst?'':'none';}
+  pruneEmpty();
+}
+for(const id of ['torusSizeMode','customSizeMode','torusPlacementMode','customPlacementMode'])document.getElementById(id)?.addEventListener('change',contextRefresh);contextRefresh();
+})();
