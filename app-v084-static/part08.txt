@@ -24,9 +24,111 @@
   return { matrix, masterMajor, masterTube };
 }
 
-function createMasterTorusGeometry(faces) {
+function faceAreaForNodeNormal(face) {
+  if (!face || face.length < 3) return 0;
+  const origin = face[0];
+  let area = 0;
+  for (let i = 1; i < face.length - 1; i++) {
+    area += face[i].clone().sub(origin).cross(face[i + 1].clone().sub(origin)).length() * 0.5;
+  }
+  return area;
+}
+
+function buildSharedNodePlacements(faces) {
+  const map = new Map();
   for (const face of faces) {
-    const data = torusInstanceDataForFace(face);
+    const normal = polygonNormal(face);
+    if (!normal) continue;
+    const area = Math.max(faceAreaForNodeNormal(face), 1e-12);
+    for (let i = 0; i < face.length; i++) {
+      const point = face[i];
+      const key = vertexKey(point);
+      let node = map.get(key);
+      if (!node) {
+        node = {
+          point: point.clone(),
+          normalSum: new THREE.Vector3(),
+          tangent: null,
+          minIncidentEdge: Infinity,
+          faceCount: 0
+        };
+        map.set(key, node);
+      }
+      node.normalSum.addScaledVector(normal, area);
+      node.faceCount++;
+      const prev = face[(i - 1 + face.length) % face.length];
+      const next = face[(i + 1) % face.length];
+      const toPrev = prev.clone().sub(point);
+      const toNext = next.clone().sub(point);
+      const lenPrev = toPrev.length();
+      const lenNext = toNext.length();
+      if (lenPrev > 1e-9) node.minIncidentEdge = Math.min(node.minIncidentEdge, lenPrev);
+      if (lenNext > 1e-9) node.minIncidentEdge = Math.min(node.minIncidentEdge, lenNext);
+      if (!node.tangent || toNext.lengthSq() > node.tangent.lengthSq()) node.tangent = toNext;
+      if (!node.tangent || toPrev.lengthSq() > node.tangent.lengthSq()) node.tangent = toPrev;
+    }
+  }
+  const placements = [];
+  for (const node of map.values()) {
+    if (node.normalSum.lengthSq() < 1e-14) continue;
+    node.normal = node.normalSum.clone().normalize();
+    node.localRadius = Number.isFinite(node.minIncidentEdge) ? node.minIncidentEdge * 0.5 : 1;
+    placements.push(node);
+  }
+  return placements;
+}
+
+function torusNodeFrame(node) {
+  const normal = node.normal.clone().normalize();
+  let xAxis = node.tangent ? node.tangent.clone() : new THREE.Vector3();
+  xAxis.addScaledVector(normal, -xAxis.dot(normal));
+  if (xAxis.lengthSq() < 1e-14) {
+    const helper = Math.abs(normal.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+    xAxis.crossVectors(helper, normal);
+  }
+  xAxis.normalize();
+  const yAxis = new THREE.Vector3().crossVectors(normal, xAxis).normalize();
+  xAxis.copy(new THREE.Vector3().crossVectors(yAxis, normal).normalize());
+  return { xAxis, yAxis, normal };
+}
+
+function torusInstanceDataForNode(node) {
+  if (!node?.normal || !node?.point) return null;
+  let uniformScale = 1;
+  let masterMajor;
+  let masterTube;
+  if (torusSizeMode.value === 'constant') {
+    masterMajor = Number(torusConstantRing.value);
+    masterTube = Number(torusConstantTube.value);
+    if (!Number.isFinite(masterMajor) || !Number.isFinite(masterTube) || masterMajor <= 0 || masterTube <= 0) return null;
+    masterMajor = Math.max(masterMajor, masterTube * 1.01);
+  } else {
+    if (!Number.isFinite(node.localRadius) || node.localRadius <= 1e-8) return null;
+    masterMajor = Number(torusRingScale.value);
+    masterTube = Math.max(Number(torusTubeScale.value), 0.005);
+    masterMajor = Math.max(masterMajor, masterTube * 1.05);
+    const maxOuter = 0.98;
+    let fitFactor = 1;
+    if (masterMajor + masterTube > maxOuter) fitFactor = maxOuter / (masterMajor + masterTube);
+    uniformScale = node.localRadius * fitFactor;
+  }
+
+  const frame = torusNodeFrame(node);
+  const basisMatrix = new THREE.Matrix4().makeBasis(frame.xAxis, frame.yAxis, frame.normal);
+  const qFrame = new THREE.Quaternion().setFromRotationMatrix(basisMatrix);
+  const qTiltX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), THREE.MathUtils.degToRad(Number(torusTiltX.value || 0)));
+  const qTiltY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), THREE.MathUtils.degToRad(Number(torusTiltY.value || 0)));
+  const quaternion = qFrame.clone().multiply(qTiltY.clone().multiply(qTiltX));
+  const offset = Number(torusNormalOffset.value || 0);
+  const position = node.point.clone().addScaledVector(frame.normal, offset);
+  const scale = new THREE.Vector3(uniformScale, uniformScale, uniformScale);
+  const matrix = new THREE.Matrix4().compose(position, quaternion, scale);
+  return { matrix, masterMajor, masterTube };
+}
+
+function createMasterTorusGeometry(placements, placementMode = 'face') {
+  for (const placement of placements) {
+    const data = placementMode === 'node' ? torusInstanceDataForNode(placement) : torusInstanceDataForFace(placement);
     if (!data) continue;
     return new THREE.TorusGeometry(
       data.masterMajor,
@@ -75,7 +177,7 @@ function buildNomadSharedNodeScene(instancedMesh) {
     node.userData = nomadNodeExtras(matrix, false);
     exportScene.add(node);
   }
-  exportScene.userData = { meshLineReplacer: { version: '0.8.4', instanceMode: 'shared-gltf-nodes', target: 'Nomad Sculpt' } };
+  exportScene.userData = { meshLineReplacer: { version: '0.8.5-wip.1', instanceMode: 'shared-gltf-nodes', target: 'Nomad Sculpt' } };
   return exportScene;
 }
 
@@ -107,32 +209,38 @@ async function generateFaceTorusResult() {
   const symmetryResult = applySymmetryToFaces(orientedFaces);
   const faces = symmetryResult.faces;
   if (!faces.length) { setStatus('No usable source faces were found for torus replacement'); return; }
-  if (faces.length > 100000 && !confirm(`This model has ${faces.length.toLocaleString()} faces. Continue with instanced tori?`)) { setStatus('Generation cancelled'); return; }
-  setStatus(`Creating shared torus master and ${faces.length.toLocaleString()} instances…`);
+
+  const placementMode = $('#torusPlacementMode')?.value === 'node' ? 'node' : 'face';
+  const placements = placementMode === 'node' ? buildSharedNodePlacements(faces) : faces;
+  if (!placements.length) { setStatus('No usable torus placements were found'); return; }
+  if (placements.length > 100000 && !confirm(`This model will create ${placements.length.toLocaleString()} torus instances. Continue?`)) { setStatus('Generation cancelled'); return; }
+
+  const placementLabel = placementMode === 'node' ? 'shared face nodes' : 'face centres';
+  setStatus(`Creating shared torus master and ${placements.length.toLocaleString()} ${placementLabel}…`);
   await new Promise((resolve) => requestAnimationFrame(resolve));
   disposeObject(resultRoot);
   resultRoot = new THREE.Group();
-  resultRoot.name = 'TorusInstanceSet';
+  resultRoot.name = placementMode === 'node' ? 'NodeTorusInstanceSet' : 'FaceTorusInstanceSet';
 
-  const masterGeometry = createMasterTorusGeometry(faces);
+  const masterGeometry = createMasterTorusGeometry(placements, placementMode);
   if (!masterGeometry) { setStatus('No valid master torus could be generated'); return; }
   masterGeometry.name = 'MasterTorusGeometry';
   const material = new THREE.MeshStandardMaterial({ color: 0xd7a6f4, roughness: 0.55, metalness: 0.06, flatShading: torusFlatShading.checked });
   material.name = 'MasterTorusMaterial';
-  const instanced = new THREE.InstancedMesh(masterGeometry, material, faces.length);
-  instanced.name = 'FaceTorusInstances';
+  const instanced = new THREE.InstancedMesh(masterGeometry, material, placements.length);
+  instanced.name = placementMode === 'node' ? 'SharedNodeTorusInstances' : 'FaceTorusInstances';
   instanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
   let made = 0, skipped = 0;
   const matrix = new THREE.Matrix4();
-  for (let i = 0; i < faces.length; i++) {
-    const data = torusInstanceDataForFace(faces[i]);
+  for (let i = 0; i < placements.length; i++) {
+    const data = placementMode === 'node' ? torusInstanceDataForNode(placements[i]) : torusInstanceDataForFace(placements[i]);
     if (!data) { skipped++; matrix.makeScale(0,0,0); instanced.setMatrixAt(i, matrix); continue; }
     instanced.setMatrixAt(i, data.matrix);
     made++;
   }
   instanced.instanceMatrix.needsUpdate = true;
-  instanced.count = faces.length;
+  instanced.count = placements.length;
   resultRoot.add(instanced);
   scene.add(resultRoot);
   sourceRoot.visible = showSource.checked;
@@ -140,7 +248,8 @@ async function generateFaceTorusResult() {
 
   const masterFaces = masterGeometry.index ? masterGeometry.index.count / 3 : masterGeometry.getAttribute('position').count / 3;
   const outputFaces = masterFaces * made;
-  setStatus(`Generated ${made.toLocaleString()} shared torus instances from one master mesh${skipped ? ` • ${skipped.toLocaleString()} degenerate faces skipped` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${facesResult.info ? ` • ${facesResult.info}` : ''}`);
+  const normalInfo = placementMode === 'node' ? ' • area-weighted averaged node normals' : '';
+  setStatus(`Generated ${made.toLocaleString()} shared torus instances at ${placementLabel}${normalInfo}${skipped ? ` • ${skipped.toLocaleString()} degenerate placements skipped` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${facesResult.info ? ` • ${facesResult.info}` : ''}`);
   setOutputMetrics({ faces: Math.round(outputFaces), holes: made, exported: false });
 }
 
@@ -163,7 +272,9 @@ function exportGlb() {
   if (!resultRoot) return;
   exportBtn.disabled = true;
   setStatus('Preparing GLB…');
-  const suffix = replaceMode.value === 'surfaceWeb' ? 'surface-web' : replaceMode.value === 'solidWeb' ? 'solid-surface-web' : replaceMode.value === 'faceTorus' ? (torusExportMode.value === 'instances' ? 'face-tori-instances' : 'face-tori-baked') : 'tubes';
+  const nodePlacement = $('#torusPlacementMode')?.value === 'node';
+  const torusSuffix = nodePlacement ? 'node-tori' : 'face-tori';
+  const suffix = replaceMode.value === 'surfaceWeb' ? 'surface-web' : replaceMode.value === 'solidWeb' ? 'solid-surface-web' : replaceMode.value === 'faceTorus' ? (torusExportMode.value === 'instances' ? `${torusSuffix}-instances` : `${torusSuffix}-baked`) : 'tubes';
 
   let exportObject = resultRoot;
   let temporaryRoot = null;
