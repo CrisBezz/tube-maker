@@ -1,0 +1,54 @@
+    setOutputMetrics({ exported: true });
+    exportBtn.disabled = false;
+  }, (error) => {
+    console.error(error);
+    if (temporaryRoot) disposeObject(temporaryRoot);
+    setStatus(`Export failed: ${error.message || error}`);
+    exportBtn.disabled = false;
+  }, { binary: true, onlyVisible: true });
+}
+function makeExample() {
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 1.1, 1, 1, 1)));
+  sourceName = 'surface-web-example'; originalObjQuadEdges = null; originalObjQuadFaces = null; edgeMode.value = 'quads'; setSource(normaliseImported(group)); setStatus('Example model loaded');
+}
+function updateStats(tubeCount = null, hubCount = 0, webFaces = 0, solid = false, holes = 0, geometry = null) {
+  let faceCount = geometry ? countGeometryFaces(geometry) : 0;
+  if (!faceCount && webFaces) faceCount = webFaces;
+  if (!faceCount && tubeCount != null) {
+    resultRoot?.traverse((obj) => { if (obj.isMesh) faceCount += countGeometryFaces(obj.geometry); });
+  }
+  setOutputMetrics({ faces: faceCount, holes, exported: false });
+}
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files?.[0];
+  if (file) loadFile(file).catch((e) => { console.error(e); setStatus(`Load failed: ${e.message || e}`); });
+  fileInput.value = '';
+});
+exampleBtn.addEventListener('click', makeExample);
+aboutBtn.addEventListener('click', () => aboutDialog.showModal());
+closeAboutBtn.addEventListener('click', () => aboutDialog.close());
+aboutDialog.addEventListener('click', (event) => { if (event.target === aboutDialog) aboutDialog.close(); });
+generateBtn.addEventListener('click', generateResult);
+exportBtn.addEventListener('click', exportGlb);
+showSource.addEventListener('change', () => { if (sourceRoot) sourceRoot.visible = showSource.checked; });
+replaceMode.addEventListener('change', () => { updateModeUI(); updateStats(); });
+[symmetry, symmetryAxis, showSymmetryPlane].forEach((el) => el.addEventListener('change', updateSymmetryPlane));
+angle.addEventListener('input', () => angleOut.value = `${angle.value}°`);
+quadAngle.addEventListener('input', () => quadAngleOut.value = `${quadAngle.value}°`);
+sides.addEventListener('input', () => sidesOut.value = sides.value);
+hubScale.addEventListener('input', () => hubScaleOut.value = `${Number(hubScale.value).toFixed(2)}×`);
+torusSizeMode.addEventListener('change', updateTorusSizeUI);
+torusRingScale.addEventListener('input', () => torusRingScaleOut.value = `${Number(torusRingScale.value).toFixed(2)}×`);
+torusTubeScale.addEventListener('input', () => torusTubeScaleOut.value = `${Number(torusTubeScale.value).toFixed(2)}×`);
+torusRingSegments.addEventListener('input', () => torusRingSegmentsOut.value = torusRingSegments.value);
+torusTubeSegments.addEventListener('input', () => torusTubeSegmentsOut.value = torusTubeSegments.value);
+torusTiltX.addEventListener('input', () => torusTiltXOut.value = `${torusTiltX.value}°`);
+torusTiltY.addEventListener('input', () => torusTiltYOut.value = `${torusTiltY.value}°`);
+function resize() { const w = viewport.clientWidth, h = viewport.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(viewport); resize(); updateModeUI(); updateTorusSizeUI();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));
+</script>
+</body>
+</html>

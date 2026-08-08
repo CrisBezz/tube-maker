@@ -1,0 +1,160 @@
+    }
+    if (Number.isFinite(minEdge)) thickness=Math.min(thickness,minEdge*0.35);
+  }
+  let frontOffset=thickness*0.5,backOffset=-thickness*0.5;
+  if (solidDirection.value==='outward') { frontOffset=thickness; backOffset=0; }
+  else if (solidDirection.value==='inward') { frontOffset=0; backOffset=-thickness; }
+
+  const sourcePositions=[];
+  for (let i=0;i<pos.count;i++) sourcePositions.push(new THREE.Vector3().fromBufferAttribute(pos,i));
+  const triangles=[];
+  const edgeMap=new Map();
+  const vertexFaces=new Map();
+  const positions=[];
+  const indices=[];
+  const edgeKey=(a,b)=>a<b?`${a}|${b}`:`${b}|${a}`;
+  const addVertexFace=(v,f)=>{ if(!vertexFaces.has(v))vertexFaces.set(v,new Set()); vertexFaces.get(v).add(f); };
+
+  for (let i=0;i<index.count;i+=3) {
+    const verts=[index.getX(i),index.getX(i+1),index.getX(i+2)];
+    const a=sourcePositions[verts[0]],b=sourcePositions[verts[1]],c=sourcePositions[verts[2]];
+    const normal=triangleNormal(a,b,c);
+    if (!Number.isFinite(normal.x) || normal.lengthSq()<1e-18) continue;
+    const front=[],back=[];
+    for (const v of verts) {
+      const p=sourcePositions[v];
+      const pf=p.clone().addScaledVector(normal,frontOffset);
+      const pb=p.clone().addScaledVector(normal,backOffset);
+      front.push(positions.length); positions.push(pf);
+      back.push(positions.length); positions.push(pb);
+    }
+    const faceIndex=triangles.length;
+    triangles.push({verts,normal,front,back});
+    indices.push(...orientTriangle(front,positions,normal));
+    indices.push(...orientTriangle(back,positions,normal.clone().negate()));
+    verts.forEach(v=>addVertexFace(v,faceIndex));
+    for (let e=0;e<3;e++) {
+      const va=verts[e],vb=verts[(e+1)%3],key=edgeKey(va,vb);
+      if(!edgeMap.has(key))edgeMap.set(key,[]);
+      edgeMap.get(key).push({faceIndex,localA:e,localB:(e+1)%3,va,vb});
+    }
+  }
+
+  let sourceNonManifoldEdges=0;
+  const faceAdjAtVertex=new Map();
+  const linkFaces=(v,a,b)=>{
+    if(!faceAdjAtVertex.has(v))faceAdjAtVertex.set(v,new Map());
+    const m=faceAdjAtVertex.get(v);
+    if(!m.has(a))m.set(a,new Set()); if(!m.has(b))m.set(b,new Set());
+    m.get(a).add(b); m.get(b).add(a);
+  };
+
+  for (const refs of edgeMap.values()) {
+    if (refs.length===2) {
+      const r0=refs[0],r1=refs[1],f0=triangles[r0.faceIndex],f1=triangles[r1.faceIndex];
+      const f0a=f0.front[r0.localA],f0b=f0.front[r0.localB];
+      let r1a=r1.localA,r1b=r1.localB;
+      if (r1.va!==r0.va) [r1a,r1b]=[r1b,r1a];
+      const f1a=f1.front[r1a],f1b=f1.front[r1b];
+      const b0a=f0.back[r0.localA],b0b=f0.back[r0.localB],b1a=f1.back[r1a],b1b=f1.back[r1b];
+      const edgeDir=sourcePositions[r0.vb].clone().sub(sourcePositions[r0.va]).normalize();
+      let desiredFront=f0.normal.clone().add(f1.normal).normalize();
+      if (desiredFront.lengthSq()<1e-12) desiredFront=edgeDir.clone().cross(f0.normal).normalize();
+      const frontQuad=[f0a,f0b,f1b,f1a];
+      indices.push(...orientTriangle([frontQuad[0],frontQuad[1],frontQuad[2]],positions,desiredFront));
+      indices.push(...orientTriangle([frontQuad[0],frontQuad[2],frontQuad[3]],positions,desiredFront));
+      const desiredBack=desiredFront.clone().negate();
+      const backQuad=[b0a,b1a,b1b,b0b];
+      indices.push(...orientTriangle([backQuad[0],backQuad[1],backQuad[2]],positions,desiredBack));
+      indices.push(...orientTriangle([backQuad[0],backQuad[2],backQuad[3]],positions,desiredBack));
+      linkFaces(r0.va,r0.faceIndex,r1.faceIndex); linkFaces(r0.vb,r0.faceIndex,r1.faceIndex);
+    } else if (refs.length===1) {
+      const r=refs[0],f=triangles[r.faceIndex];
+      const fa=f.front[r.localA],fb=f.front[r.localB],ba=f.back[r.localA],bb=f.back[r.localB];
+      const edgeDir=sourcePositions[r.vb].clone().sub(sourcePositions[r.va]).normalize();
+      let wallNormal=edgeDir.clone().cross(f.normal).normalize();
+      const centre=positions[fa].clone().add(positions[fb]).add(positions[ba]).add(positions[bb]).multiplyScalar(0.25);
+      const mid=sourcePositions[r.va].clone().add(sourcePositions[r.vb]).multiplyScalar(0.5);
+      if (wallNormal.dot(centre.clone().sub(mid))<0) wallNormal.negate();
+      indices.push(...orientTriangle([fa,fb,bb],positions,wallNormal));
+      indices.push(...orientTriangle([fa,bb,ba],positions,wallNormal));
+    } else sourceNonManifoldEdges++;
+  }
+
+  let vertexCaps=0;
+  for (const [v,faceSet] of vertexFaces) {
+    const faces=[...faceSet];
+    if (faces.length<2) continue;
+    const adj=faceAdjAtVertex.get(v)||new Map();
+    const degrees=new Map(faces.map(f=>[f,(adj.get(f)||new Set()).size]));
+    const isBoundary=faces.some(f=>degrees.get(f)<2);
+    let start=faces.find(f=>degrees.get(f)===1) ?? faces[0];
+    const order=[]; let prev=null,cur=start;
+    for (let guard=0;guard<faces.length+2;guard++) {
+      order.push(cur);
+      const nexts=[...(adj.get(cur)||[])].filter(n=>n!==prev);
+      let next=nexts.find(n=>!order.includes(n));
+      if(next==null) break;
+      prev=cur;cur=next;
+    }
+    for(const f of faces) if(!order.includes(f)) order.push(f);
+    const cornerIndex=(face,side)=>{
+      const t=triangles[face],local=t.verts.indexOf(v);
+      return side==='front'?t.front[local]:t.back[local];
+    };
+    const addFan=(ring,desired)=>{
+      const unique=[]; for(const id of ring) if(unique.at(-1)!==id) unique.push(id);
+      if(unique.length<3) return;
+      const centre=unique.reduce((acc,id)=>acc.add(positions[id]),new THREE.Vector3()).multiplyScalar(1/unique.length);
+      const ci=positions.length; positions.push(centre);
+      for(let i=0;i<unique.length;i++) {
+        const tri=[ci,unique[i],unique[(i+1)%unique.length]];
+        indices.push(...orientTriangle(tri,positions,desired));
+      }
+      vertexCaps++;
+    };
+    const avgNormal=order.reduce((acc,f)=>acc.add(triangles[f].normal),new THREE.Vector3()).normalize();
+    if(!isBoundary) {
+      addFan(order.map(f=>cornerIndex(f,'front')),avgNormal);
+      addFan(order.slice().reverse().map(f=>cornerIndex(f,'back')),avgNormal.clone().negate());
+    } else {
+      const ring=order.map(f=>cornerIndex(f,'front')).concat(order.slice().reverse().map(f=>cornerIndex(f,'back')));
+      let desired=ring.reduce((acc,id)=>acc.add(positions[id]),new THREE.Vector3()).multiplyScalar(1/ring.length).sub(sourcePositions[v]);
+      if(desired.lengthSq()<1e-12) desired=avgNormal; else desired.normalize();
+      addFan(ring,desired);
+    }
+  }
+
+  let geometry=cleanAndWeldGeometry(positions,indices,1e-6);
+  const gpos=geometry.getAttribute('position'),gidx=geometry.index;
+  const gp=[]; for(let i=0;i<gpos.count;i++)gp.push(new THREE.Vector3().fromBufferAttribute(gpos,i));
+  const gi=[]; for(let i=0;i<gidx.count;i++)gi.push(gidx.getX(i));
+  if(signedMeshVolume(gp,gi)<0) {
+    for(let i=0;i<gi.length;i+=3)[gi[i+1],gi[i+2]]=[gi[i+2],gi[i+1]];
+    geometry.setIndex(gi);
+  }
+  geometry.computeVertexNormals();
+  const analysis=analyseClosedMesh(geometry);
+  base.dispose();
+  return { geometry, thickness, boundaryEdges:analysis.boundaryEdges, nonManifoldEdges:analysis.nonManifoldEdges, watertight:analysis.watertight, sourceNonManifoldEdges, vertexCaps };
+}
+async function generateSolidWebResult() {
+  const facesResult = collectFaces();
+  const orientedFaces = orientTorusFaces(facesResult.faces);
+  const symmetryResult = applySymmetryToFaces(orientedFaces);
+  const faces = symmetryResult.faces;
+  if (!faces.length) { setStatus('No usable source faces were found for the solid surface web'); return; }
+  if (faces.length > 50000 && !confirm(`This model has ${faces.length.toLocaleString()} faces. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
+  setStatus(`Generating solid surface web from ${faces.length.toLocaleString()} faces…`);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  const built = buildInsetWebGeometry(faces);
+  if (!built.geometry) { setStatus('No valid inset faces could be created. Try a smaller web width.'); return; }
+  const holeCount = countBoundaryLoops(built.geometry);
+  const solid = solidifySurfaceGeometry(built.geometry);
+  built.geometry.dispose();
+  if (!solid?.geometry) { setStatus('Failed to solidify the inset web.'); return; }
+  const material = new THREE.MeshStandardMaterial({ color: 0x78c7a0, roughness: 0.7, metalness: 0.03, side: THREE.FrontSide, flatShading: false });
+  resultRoot.add(new THREE.Mesh(solid.geometry, material));
+  scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;

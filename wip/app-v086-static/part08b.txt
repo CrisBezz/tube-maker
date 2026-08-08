@@ -1,0 +1,343 @@
+
+// v0.8.6-wip.1 — imported master object instancing
+const CUSTOM_WIP_VERSION = '0.8.6-wip.1';
+
+document.title = `Mesh Line Replacer v${CUSTOM_WIP_VERSION}`;
+const visibleVersion = document.querySelector('.version');
+if (visibleVersion) visibleVersion.textContent = `v${CUSTOM_WIP_VERSION}`;
+const aboutVersion = document.querySelector('.about-version');
+if (aboutVersion) aboutVersion.textContent = `Version ${CUSTOM_WIP_VERSION}`;
+const appTitle = document.querySelector('.title');
+if (appTitle) appTitle.textContent = 'Mesh Line Replacer · WIP';
+const aboutBody = document.querySelector('.about-body');
+if (aboutBody) {
+  const historyLists = aboutBody.querySelectorAll('ul');
+  if (historyLists.length > 1) {
+    const li = document.createElement('li');
+    li.innerHTML = '<strong>v0.8.6-wip.1</strong> — Imported master-object instances at face centres or shared nodes';
+    historyLists[1].prepend(li);
+  }
+}
+
+if (![...replaceMode.options].some((o) => o.value === 'customInstance')) {
+  replaceMode.add(new Option('Imported instance object', 'customInstance'));
+}
+
+const customInstanceSection = document.createElement('div');
+customInstanceSection.id = 'customInstanceSection';
+customInstanceSection.className = 'section hidden';
+customInstanceSection.innerHTML = `
+  <h2>Imported instance object</h2>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+    <label class="file-button" for="customInstanceFile">Import master object</label>
+    <input id="customInstanceFile" type="file" accept=".glb,.gltf,.obj,.stl,model/gltf-binary,model/gltf+json" style="display:none" />
+  </div>
+  <p id="customMasterStatus" class="note" style="margin-bottom:14px">No master object loaded. GLB is recommended for materials.</p>
+  <div class="control"><label for="customPlacementMode">Placement</label><select id="customPlacementMode"><option value="face" selected>Face centre</option><option value="node">Shared face node</option></select></div>
+  <div class="control"><label for="customSizeMode">Size mode</label><select id="customSizeMode"><option value="relative">Relative to local mesh</option><option value="constant">Constant absolute size</option></select></div>
+  <div id="customRelativeControls">
+    <div class="control"><label for="customRelativeScale">Local size multiplier</label><output id="customRelativeScaleOut">1.00×</output><input id="customRelativeScale" type="range" min="0.05" max="4" value="1" step="0.05" /></div>
+  </div>
+  <div id="customConstantControls" class="hidden">
+    <div class="control"><label for="customConstantSize">Object max size</label><input id="customConstantSize" type="number" min="0.0001" step="0.01" value="0.5" inputmode="decimal" /></div>
+  </div>
+  <div class="control"><label for="customNormalMode">Normal direction</label><select id="customNormalMode"><option value="source">As source</option><option value="outward" selected>Force outward</option><option value="inward">Force inward</option></select></div>
+  <div class="control"><label for="customAxis">Object alignment axis</label><select id="customAxis"><option value="pz" selected>+Z → normal</option><option value="py">+Y → normal</option><option value="px">+X → normal</option><option value="nz">−Z → normal</option><option value="ny">−Y → normal</option><option value="nx">−X → normal</option></select></div>
+  <div class="control"><label for="customNormalOffset">Normal offset</label><input id="customNormalOffset" type="number" step="0.001" value="0" inputmode="decimal" /></div>
+  <div class="control"><label for="customTiltX">Tilt X</label><output id="customTiltXOut">0°</output><input id="customTiltX" type="range" min="-180" max="180" value="0" step="1" /></div>
+  <div class="control"><label for="customTiltY">Tilt Y</label><output id="customTiltYOut">0°</output><input id="customTiltY" type="range" min="-180" max="180" value="0" step="1" /></div>
+  <div class="control"><label for="customExportMode">GLB export</label><select id="customExportMode"><option value="instances" selected>Nomad shared nodes</option><option value="baked">Bake copies</option></select></div>
+  <p class="note">The imported object is recentred as one master. Its selected local axis is aligned to each face normal or averaged shared-node normal. All generated copies share the same master mesh data when exported as Nomad shared nodes.</p>
+`;
+torusSection.insertAdjacentElement('afterend', customInstanceSection);
+
+const customInstanceFile = $('#customInstanceFile');
+const customMasterStatus = $('#customMasterStatus');
+const customPlacementMode = $('#customPlacementMode');
+const customSizeMode = $('#customSizeMode');
+const customRelativeControls = $('#customRelativeControls');
+const customConstantControls = $('#customConstantControls');
+const customRelativeScale = $('#customRelativeScale');
+const customRelativeScaleOut = $('#customRelativeScaleOut');
+const customConstantSize = $('#customConstantSize');
+const customNormalMode = $('#customNormalMode');
+const customAxis = $('#customAxis');
+const customNormalOffset = $('#customNormalOffset');
+const customTiltX = $('#customTiltX');
+const customTiltXOut = $('#customTiltXOut');
+const customTiltY = $('#customTiltY');
+const customTiltYOut = $('#customTiltYOut');
+const customExportMode = $('#customExportMode');
+
+let customMasterRecords = [];
+let customMasterName = 'imported-object';
+let customMasterMaxSize = 1;
+let customMasterFaceCount = 0;
+
+function cloneCustomMaterial(material) {
+  if (Array.isArray(material)) return material.map((m) => m?.clone ? m.clone() : m);
+  return material?.clone ? material.clone() : new THREE.MeshStandardMaterial({ color: 0xc6d4e8, roughness: 0.65, metalness: 0.02 });
+}
+function disposeCustomMaster() {
+  for (const rec of customMasterRecords) {
+    rec.geometry?.dispose?.();
+    const material = rec.material;
+    if (Array.isArray(material)) material.forEach((m) => m?.dispose?.()); else material?.dispose?.();
+  }
+  customMasterRecords = [];
+  customMasterFaceCount = 0;
+}
+function prepareCustomMaster(root, name) {
+  disposeCustomMaster();
+  root.updateMatrixWorld(true);
+  const records = [];
+  const bounds = new THREE.Box3();
+  let hasBounds = false;
+  root.traverse((obj) => {
+    if (!obj.isMesh || !obj.geometry) return;
+    const geometry = obj.geometry.clone();
+    geometry.applyMatrix4(obj.matrixWorld);
+    if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    if (geometry.boundingBox && !geometry.boundingBox.isEmpty()) {
+      if (!hasBounds) { bounds.copy(geometry.boundingBox); hasBounds = true; }
+      else bounds.union(geometry.boundingBox);
+    }
+    records.push({ geometry, material: cloneCustomMaterial(obj.material), name: obj.name || 'MasterPart' });
+  });
+  if (!records.length || !hasBounds) {
+    records.forEach((r) => r.geometry.dispose());
+    throw new Error('No usable mesh geometry was found in the imported master object.');
+  }
+  const centre = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  customMasterMaxSize = Math.max(size.x, size.y, size.z, 1e-9);
+  customMasterFaceCount = 0;
+  for (const rec of records) {
+    rec.geometry.translate(-centre.x, -centre.y, -centre.z);
+    rec.geometry.computeBoundingSphere();
+    customMasterFaceCount += rec.geometry.index ? rec.geometry.index.count / 3 : rec.geometry.getAttribute('position').count / 3;
+  }
+  customMasterRecords = records;
+  customMasterName = name || 'imported-object';
+  customMasterStatus.textContent = `${customMasterName} loaded • ${records.length.toLocaleString()} mesh part${records.length === 1 ? '' : 's'} • ${Math.round(customMasterFaceCount).toLocaleString()} faces • source max size ${customMasterMaxSize.toPrecision(4)}`;
+}
+async function loadCustomMasterFile(file) {
+  customMasterStatus.textContent = `Loading ${file.name}…`;
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  let loaded;
+  if (ext === 'obj') {
+    loaded = new OBJLoader().parse(await file.text());
+  } else {
+    const url = URL.createObjectURL(file);
+    try {
+      if (ext === 'glb' || ext === 'gltf') loaded = (await new GLTFLoader().loadAsync(url)).scene;
+      else if (ext === 'stl') {
+        const geometry = await new STLLoader().loadAsync(url);
+        loaded = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xc6d4e8, roughness: 0.65, metalness: 0.02 }));
+      } else throw new Error('Unsupported master-object format.');
+    } finally { URL.revokeObjectURL(url); }
+  }
+  prepareCustomMaster(loaded, file.name.replace(/\.[^.]+$/, '') || 'imported-object');
+}
+
+function updateCustomInstanceUI() {
+  customInstanceSection.classList.toggle('hidden', replaceMode.value !== 'customInstance');
+  const constant = customSizeMode.value === 'constant';
+  customRelativeControls.classList.toggle('hidden', constant);
+  customConstantControls.classList.toggle('hidden', !constant);
+}
+replaceMode.addEventListener('change', updateCustomInstanceUI);
+customSizeMode.addEventListener('change', updateCustomInstanceUI);
+customRelativeScale.addEventListener('input', () => customRelativeScaleOut.value = `${Number(customRelativeScale.value).toFixed(2)}×`);
+customTiltX.addEventListener('input', () => customTiltXOut.value = `${customTiltX.value}°`);
+customTiltY.addEventListener('input', () => customTiltYOut.value = `${customTiltY.value}°`);
+customInstanceFile.addEventListener('change', () => {
+  const file = customInstanceFile.files?.[0];
+  if (file) loadCustomMasterFile(file).catch((e) => { console.error(e); customMasterStatus.textContent = `Master load failed: ${e.message || e}`; });
+  customInstanceFile.value = '';
+});
+
+function customAxisVector() {
+  switch (customAxis.value) {
+    case 'px': return new THREE.Vector3(1,0,0);
+    case 'py': return new THREE.Vector3(0,1,0);
+    case 'nx': return new THREE.Vector3(-1,0,0);
+    case 'ny': return new THREE.Vector3(0,-1,0);
+    case 'nz': return new THREE.Vector3(0,0,-1);
+    default: return new THREE.Vector3(0,0,1);
+  }
+}
+function customAxisCorrectionQuaternion() {
+  return new THREE.Quaternion().setFromUnitVectors(customAxisVector(), new THREE.Vector3(0,0,1));
+}
+function customPlacementMatrixForFace(face) {
+  if (!face || face.length < 3) return null;
+  const centre = face.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / face.length);
+  const normal = polygonNormal(face);
+  if (!normal) return null;
+  let inRadius = Infinity;
+  for (let i = 0; i < face.length; i++) inRadius = Math.min(inRadius, pointSegmentDistance3D(centre, face[i], face[(i + 1) % face.length]));
+  if (!Number.isFinite(inRadius) || inRadius <= 1e-9) return null;
+  const frame = torusLocalFrame(face, normal, centre);
+  return customPlacementMatrix(frame, centre, inRadius * 2);
+}
+function customPlacementMatrixForNode(node) {
+  if (!node?.normal || !node?.point) return null;
+  const frame = torusNodeFrame(node);
+  const localDiameter = Math.max((node.localRadius || 0) * 2, 1e-9);
+  return customPlacementMatrix(frame, node.point, localDiameter);
+}
+function customPlacementMatrix(frame, point, localDiameter) {
+  const basis = new THREE.Matrix4().makeBasis(frame.xAxis, frame.yAxis, frame.normal);
+  const qFrame = new THREE.Quaternion().setFromRotationMatrix(basis);
+  const qTiltX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), THREE.MathUtils.degToRad(Number(customTiltX.value || 0)));
+  const qTiltY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), THREE.MathUtils.degToRad(Number(customTiltY.value || 0)));
+  const qAxis = customAxisCorrectionQuaternion();
+  const quaternion = qFrame.clone().multiply(qTiltY.clone().multiply(qTiltX)).multiply(qAxis);
+  let wantedSize;
+  if (customSizeMode.value === 'constant') wantedSize = Number(customConstantSize.value);
+  else wantedSize = localDiameter * Number(customRelativeScale.value || 1);
+  if (!Number.isFinite(wantedSize) || wantedSize <= 0 || !Number.isFinite(customMasterMaxSize) || customMasterMaxSize <= 0) return null;
+  const uniformScale = wantedSize / customMasterMaxSize;
+  const offset = Number(customNormalOffset.value || 0);
+  const position = point.clone().addScaledVector(frame.normal, offset);
+  return new THREE.Matrix4().compose(position, quaternion, new THREE.Vector3(uniformScale, uniformScale, uniformScale));
+}
+function customOrientedFaces(faces) {
+  const previous = torusNormalMode.value;
+  torusNormalMode.value = customNormalMode.value;
+  try { return orientTorusFaces(faces); }
+  finally { torusNormalMode.value = previous; }
+}
+function cloneCustomGenerationRecords() {
+  return customMasterRecords.map((rec) => ({ geometry: rec.geometry.clone(), material: cloneCustomMaterial(rec.material), name: rec.name }));
+}
+
+async function generateCustomInstanceResult() {
+  if (!sourceRoot) return;
+  if (!customMasterRecords.length) { setStatus('Import a master object before generating instances'); return; }
+  generateBtn.disabled = true;
+  try {
+    const facesResult = collectFaces();
+    const oriented = customOrientedFaces(facesResult.faces);
+    const symmetryResult = applySymmetryToFaces(oriented);
+    const faces = symmetryResult.faces;
+    const placementMode = customPlacementMode.value === 'node' ? 'node' : 'face';
+    const placements = placementMode === 'node' ? buildSharedNodePlacements(faces) : faces;
+    if (!placements.length) { setStatus('No usable placement locations were found'); return; }
+    const meshNodeCount = placements.length * customMasterRecords.length;
+    if (meshNodeCount > 80000 && !confirm(`This will create ${meshNodeCount.toLocaleString()} instanced mesh nodes. Continue?`)) { setStatus('Generation cancelled'); return; }
+    setStatus(`Creating ${placements.length.toLocaleString()} imported-object instances…`);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    disposeObject(resultRoot);
+    resultRoot = new THREE.Group();
+    resultRoot.name = 'ImportedMasterInstances';
+    const generationRecords = cloneCustomGenerationRecords();
+    const matrices = [];
+    let skipped = 0;
+    for (const placement of placements) {
+      const matrix = placementMode === 'node' ? customPlacementMatrixForNode(placement) : customPlacementMatrixForFace(placement);
+      if (matrix) matrices.push(matrix); else skipped++;
+    }
+    if (!matrices.length) { generationRecords.forEach((r) => r.geometry.dispose()); setStatus('No valid instance transforms could be generated'); return; }
+    for (const rec of generationRecords) {
+      const instanced = new THREE.InstancedMesh(rec.geometry, rec.material, matrices.length);
+      instanced.name = rec.name || customMasterName;
+      instanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      matrices.forEach((m, i) => instanced.setMatrixAt(i, m));
+      instanced.instanceMatrix.needsUpdate = true;
+      resultRoot.add(instanced);
+    }
+    resultRoot.userData.customInstanceSet = { version: CUSTOM_WIP_VERSION, masterName: customMasterName, placementMode, count: matrices.length };
+    scene.add(resultRoot);
+    sourceRoot.visible = showSource.checked;
+    exportBtn.disabled = false;
+    const totalFaces = customMasterFaceCount * matrices.length;
+    const label = placementMode === 'node' ? 'shared face nodes' : 'face centres';
+    setStatus(`Generated ${matrices.length.toLocaleString()} instances of ${customMasterName} at ${label}${placementMode === 'node' ? ' • averaged node normals' : ''}${skipped ? ` • ${skipped.toLocaleString()} skipped` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}`);
+    setOutputMetrics({ faces: Math.round(totalFaces), holes: matrices.length, exported: false });
+  } catch (error) {
+    console.error(error);
+    setStatus(`Generation failed: ${error.message || error}`);
+  } finally { generateBtn.disabled = false; }
+}
+
+function buildCustomSharedNodeExport() {
+  const exportScene = new THREE.Scene();
+  exportScene.name = 'NomadImportedMasterInstances';
+  const matrix = new THREE.Matrix4();
+  resultRoot.children.filter((c) => c.isInstancedMesh).forEach((instanced) => {
+    for (let i = 0; i < instanced.count; i++) {
+      instanced.getMatrixAt(i, matrix);
+      const mesh = new THREE.Mesh(instanced.geometry, instanced.material);
+      mesh.name = instanced.name || customMasterName;
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.copy(matrix);
+      mesh.userData = nomadNodeExtras(matrix, false);
+      exportScene.add(mesh);
+    }
+  });
+  exportScene.userData = { meshLineReplacer: { version: CUSTOM_WIP_VERSION, instanceMode: 'shared-gltf-nodes', master: customMasterName, target: 'Nomad Sculpt' } };
+  return exportScene;
+}
+function buildCustomBakedExport() {
+  const root = new THREE.Group();
+  root.name = 'BakedImportedMasterCopies';
+  const matrix = new THREE.Matrix4();
+  resultRoot.children.filter((c) => c.isInstancedMesh).forEach((instanced) => {
+    for (let i = 0; i < instanced.count; i++) {
+      instanced.getMatrixAt(i, matrix);
+      const geometry = instanced.geometry.clone();
+      geometry.applyMatrix4(matrix);
+      const mesh = new THREE.Mesh(geometry, cloneCustomMaterial(instanced.material));
+      mesh.name = instanced.name || customMasterName;
+      root.add(mesh);
+    }
+  });
+  return root;
+}
+function removeSharedExportRoot(root) {
+  if (!root) return;
+  while (root.children.length) root.remove(root.children[root.children.length - 1]);
+}
+function exportCustomInstanceGlb() {
+  if (!resultRoot) return;
+  exportBtn.disabled = true;
+  const shared = customExportMode.value === 'instances';
+  setStatus(shared ? 'Building Nomad shared-node imported-object GLB…' : 'Baking imported-object copies…');
+  const exportRoot = shared ? buildCustomSharedNodeExport() : buildCustomBakedExport();
+  new GLTFExporter().parse(exportRoot, (result) => {
+    const blob = new Blob([result], { type: 'model/gltf-binary' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const placement = customPlacementMode.value === 'node' ? 'node' : 'face';
+    a.href = url;
+    a.download = `${sourceName}-${customMasterName}-${placement}-${shared ? 'instances' : 'baked'}.glb`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    if (shared) removeSharedExportRoot(exportRoot); else disposeObject(exportRoot);
+    setStatus(shared ? 'Nomad shared-node imported-object GLB exported' : 'Baked imported-object GLB exported');
+    setOutputMetrics({ exported: true });
+    exportBtn.disabled = false;
+  }, (error) => {
+    console.error(error);
+    if (shared) removeSharedExportRoot(exportRoot); else disposeObject(exportRoot);
+    setStatus(`Export failed: ${error.message || error}`);
+    exportBtn.disabled = false;
+  }, { binary: true, onlyVisible: true });
+}
+
+// Capture custom-mode actions before the stable v0.8.5 listeners run.
+generateBtn.addEventListener('click', (event) => {
+  if (replaceMode.value !== 'customInstance') return;
+  event.preventDefault(); event.stopImmediatePropagation();
+  generateCustomInstanceResult();
+}, true);
+exportBtn.addEventListener('click', (event) => {
+  if (replaceMode.value !== 'customInstance') return;
+  event.preventDefault(); event.stopImmediatePropagation();
+  exportCustomInstanceGlb();
+}, true);
+
+updateCustomInstanceUI();
