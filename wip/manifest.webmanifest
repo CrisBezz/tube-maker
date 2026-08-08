@@ -1,0 +1,11 @@
+{
+  "name": "Mesh Line Replacer WIP",
+  "short_name": "Mesh WIP",
+  "version": "0.8.5-wip.1",
+  "description": "Work-in-progress Mesh Line Replacer build for testing experimental torus placement.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#111318",
+  "theme_color": "#191c22",
+  "orientation": "any"
+}
