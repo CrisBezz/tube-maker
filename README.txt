@@ -1,27 +1,27 @@
-MESH LINE REPLACER v0.8.2 — TORUS FRAME / NORMAL / SIZE UPDATE
+MESH LINE REPLACER v0.8.3 — TORUS INSTANCES
+
+NEW IN v0.8.3
+- Torus per Face now uses one shared master torus in the viewport.
+- Each face stores only a transform: position, rotation, tilt and scale.
+- Shared Instances GLB export is the default and is intended to preserve the instancing relationship when the receiving app supports glTF instancing.
+- Bake Copies remains available as a compatibility fallback.
+- Relative-size mode uses uniform per-instance scaling, so all instances can still share one master topology.
 
 NEW IN v0.8.2
 - Fixes Torus per Face X/Y tilt using a deterministic local face frame.
 - Adds Normal direction: As source / Force outward / Force inward.
-- Positive Normal offset now follows the selected normal direction.
+- Positive Normal offset follows the selected normal direction.
 - Adds Relative-to-face or Constant-absolute torus size modes.
 - Constant mode has independent ring radius and tube radius values.
-
-MESH LINE REPLACER v0.8.2 — SAFARI / IPAD VERSION
-
-NEW IN v0.8.0
-- Experimental Torus per Face replacement mode.
-- One torus is centred on each source face.
-- Torus axis is aligned to the source face normal.
-- Ring size is derived from the face centroid-to-edge inradius, so triangles, quads and irregular polygonal faces can be used.
-- Controls for ring radius scale, tube radius scale, ring segments, tube facets and face-normal offset.
 
 Stable replacement modes:
 1. Faceted tubes, with overlap, mitre and welded-hub junctions.
 2. Inset surface web: a welded, single-face-thick web following the original mesh.
 3. Solid surface web: the inset web is duplicated, offset and bridged into one closed mesh while retaining all openings.
+4. Torus per Face: one shared torus master distributed across source faces by instance transforms.
 
 VERSION HISTORY
+- v0.8.3 — Shared master torus instances and instanced GLB export
 - v0.8.2 — Torus local-frame tilt fix, normal direction and constant sizing
 - v0.8.1 — Local Tilt X / Tilt Y controls
 - v0.8.0 — Experimental Torus per Face
