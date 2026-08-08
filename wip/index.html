@@ -15,7 +15,7 @@
   <script>
   (async()=>{
     const base='https://raw.githubusercontent.com/CrisBezz/tube-maker/wip/app-v084-static/';
-    const parts=['part00.txt','part01.txt','part02.txt','part03.txt','part04.txt','part05.txt','part06.txt','part07.txt','part08.txt','part08b.txt','part09.txt'];
+    const parts=['part00.txt','part01.txt','part02.txt','part03.txt','part04.txt','part05.txt','part06.txt','part07.txt','part08b.txt','part08.txt','part09.txt'];
     try{
       const text=(await Promise.all(parts.map(async name=>{
         const r=await fetch(base+name+'?v=0.8.6-wip.1',{cache:'no-store'});
