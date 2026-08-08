@@ -1,8 +1,8 @@
 {
   "name":"Mesh Line Replacer WIP",
   "short_name":"Mesh WIP",
-  "version":"0.9.0-wip.5",
-  "description":"Work-in-progress Mesh Line Replacer build consolidating FILE, MODE and VIEW functions, fixing instance-object import routing, removing duplicate export/About controls, and reducing right-panel scrolling.",
+  "version":"0.9.0-wip.6",
+  "description":"Work-in-progress UI cleanup removing remaining duplicate View/Export controls, restoring size sub-controls, pruning duplicated orientation controls and unwrapping Advanced.",
   "start_url":"./index.html",
   "display":"standalone",
   "background_color":"#111318",
