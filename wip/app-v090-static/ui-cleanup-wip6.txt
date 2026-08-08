@@ -1,0 +1,45 @@
+
+// v0.9.0-wip.6 — final scroll-panel de-duplication pass
+(function(){
+const VERSION='0.9.0-wip.6';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const style=document.createElement('style');style.textContent=`.mlr-wip6-hidden{display:none!important}.mlr-wip6-unwrapped{border:0!important;background:transparent!important;margin:0!important}.mlr-wip6-unwrapped>summary{display:none!important}`;document.head.appendChild(style);
+const panel=document.querySelector('.panel,.sidebar,.controls');
+const viewPop=document.querySelector('.mlr-viewpop2');
+const filePop=document.querySelector('.mlr-filepop');
+function hide(el){if(el)el.classList.add('mlr-wip6-hidden')}
+function show(el){if(!el)return;el.classList.remove('mlr-wip6-hidden','mlr-consolidated-hidden','mlr-context-hidden','hidden');el.style.removeProperty('display')}
+function ctrl(id){const e=document.getElementById(id);return e?.closest('.control')||e?.closest('label.check')||e?.parentElement}
+// 1. VIEW belongs only in the top VIEW menu. Remove every original diagnostic control/section from the scroll panel.
+const viewIds=['viewMode','baseViewMode','viewTarget','viewWireOverlay','overlayWire','viewFaceNormals','overlayFaceNormals','viewVertexNormals','overlayVertexNormals','viewNormalLength','normalLength'];
+for(const id of viewIds){const e=document.getElementById(id);if(!e)continue;const c=e.closest('.control')||e.closest('label.check');if(c&&!viewPop?.contains(c))hide(c)}
+const diagnostic=document.getElementById('diagnosticViewSection');if(diagnostic)hide(diagnostic);
+if(panel){for(const d of panel.querySelectorAll('.mlr-section')){const name=(d.dataset.section||d.querySelector('summary')?.textContent||'').trim().toLowerCase();const body=d.querySelector('.mlr-section-body');if(name==='general'&&body){const visible=[...body.children].filter(x=>!x.classList.contains('mlr-wip6-hidden')&&!x.classList.contains('mlr-consolidated-hidden'));if(!visible.length)hide(d)}}}
+// 2. Remove the nested Advanced mini-menu. Keep its controls, but unwrap them into the main panel.
+if(panel){for(const d of [...panel.querySelectorAll('.mlr-advanced,.mlr-section[data-section="Advanced"]')]){const holder=d.querySelector('.mlr-section-body')||d;const controls=[...holder.querySelectorAll(':scope > .control,:scope > label.check,:scope > .mlr-two-col')];for(const c of controls)panel.insertBefore(c,d);d.remove();}}
+// 3. SIZE must reveal the appropriate child controls whenever the size mode changes.
+function refreshSize(prefix){const mode=document.getElementById(prefix+'SizeMode');if(!mode)return;const relative=document.getElementById(prefix+'RelativeControls');const constant=document.getElementById(prefix+'ConstantControls');const isConst=mode.value==='constant';if(relative){relative.classList.remove('hidden','mlr-context-hidden','mlr-consolidated-hidden','mlr-wip6-hidden');relative.style.display=isConst?'none':''}if(constant){constant.classList.remove('hidden','mlr-context-hidden','mlr-consolidated-hidden','mlr-wip6-hidden');constant.style.display=isConst?'':'none'}for(const id of prefix==='torus'?['torusRelativeScale','torusMajorScale','torusTubeScale','torusConstantMajor','torusConstantTube','torusConstantSize']:['customRelativeScale','customConstantSize']){const e=document.getElementById(id);if(!e)continue;const c=e.closest('.control');if(!c)continue;const inConst=/Constant/.test(id);c.classList.toggle('mlr-wip6-hidden',isConst?!inConst:inConst);}}
+for(const p of ['torus','custom']){document.getElementById(p+'SizeMode')?.addEventListener('change',()=>refreshSize(p));refreshSize(p)}
+// 4. Strong mode-specific pruning prevents Torus and Imported-object orientation controls appearing together.
+function activeMode(){const native=document.getElementById('replaceMode')||document.querySelector('select[name="mode"]');const top=document.getElementById('mlrMode');const v=(native?.value||top?.value||'').toLowerCase();const text=(native?.selectedOptions?.[0]?.textContent||top?.selectedOptions?.[0]?.textContent||'').toLowerCase();if(v.includes('custom')||text.includes('import'))return'custom';if(v.includes('torus')||text.includes('torus'))return'torus';return'other'}
+function refreshMode(){const mode=activeMode();if(!panel)return;for(const c of panel.querySelectorAll('.control,label.check')){const ids=[...c.querySelectorAll('[id]')].map(e=>e.id);const hasCustom=ids.some(id=>id.startsWith('custom'));const hasTorus=ids.some(id=>id.startsWith('torus'));if(mode==='custom'&&hasTorus)hide(c);else if(mode==='torus'&&hasCustom)hide(c);else if((hasCustom||hasTorus)&&mode!=='other')show(c)}refreshSize('torus');refreshSize('custom');
+ // Basic/base view can never reappear in Orientation or any other scroll section.
+ for(const id of ['baseViewMode','viewMode'])hide(ctrl(id));
+}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',refreshMode);refreshMode();
+// 5. Export is a FILE operation only. Remove all bottom/right export UI, including duplicated export mode rows.
+for(const id of ['customExportMode','torusExportMode','exportMode'])hide(ctrl(id));
+if(panel){for(const el of panel.querySelectorAll('button,a,.control,.actions,.toolbar-row')){const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(/^export($|\s)|export glb|glb export|instance export/.test(t))hide(el)}}
+for(const el of document.querySelectorAll('#exportBtn,#export,#mlrExport'))if(!filePop?.contains(el))hide(el);
+// 6. Rebuild VIEW using the actual diagnostic-control IDs used by the app.
+const viewList=viewPop?.querySelector('#mlrViewList');const base=document.getElementById('baseViewMode')||document.getElementById('viewMode');const target=document.getElementById('viewTarget');
+if(viewList&&base){viewList.innerHTML='';for(const opt of [...base.options]){const b=document.createElement('button');b.type='button';b.textContent=opt.textContent.trim();if(opt.value===base.value)b.classList.add('is-active');b.onclick=()=>{base.value=opt.value;base.dispatchEvent(new Event('change',{bubbles:true}));for(const x of viewList.querySelectorAll('button[data-base]'))x.classList.toggle('is-active',x.dataset.base===base.value)};b.dataset.base=opt.value;viewList.appendChild(b)}
+ if(target){viewList.appendChild(document.createElement('hr'));const row=document.createElement('label');row.className='mlr-menurow';const sp=document.createElement('span');sp.textContent='View target';row.append(sp,target);viewList.appendChild(row)}
+ const overlays=[['overlayWire','Wireframe overlay'],['overlayFaceNormals','Face normals'],['overlayVertexNormals','Vertex normals']];if(overlays.some(([id])=>document.getElementById(id))){viewList.appendChild(document.createElement('hr'));for(const [id,label] of overlays){const input=document.getElementById(id);if(!input)continue;const row=document.createElement('label');row.className='mlr-menurow mlr-check';const sp=document.createElement('span');sp.textContent=label;row.append(sp,input);viewList.appendChild(row)}}
+ const length=document.getElementById('normalLength');if(length){const row=document.createElement('label');row.className='mlr-menurow';const sp=document.createElement('span');sp.textContent='Normal length';row.append(sp,length);viewList.appendChild(row)}
+}
+// 7. Remove empty generated section shells after all moves/hides.
+if(panel){for(const d of panel.querySelectorAll('.mlr-section')){const body=d.querySelector('.mlr-section-body');if(!body)continue;const visible=[...body.children].filter(x=>!x.classList.contains('mlr-wip6-hidden')&&!x.classList.contains('mlr-consolidated-hidden')&&getComputedStyle(x).display!=='none');if(!visible.length)hide(d)}}
+})();
