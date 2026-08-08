@@ -1,7 +1,7 @@
 {
   "name": "Mesh Line Replacer WIP",
   "short_name": "Mesh WIP",
-  "version": "0.8.6-wip.1",
+  "version": "0.8.6-wip.2",
   "description": "Work-in-progress Mesh Line Replacer build for testing imported master-object instancing.",
   "start_url": "./index.html",
   "display": "standalone",
