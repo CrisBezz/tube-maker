@@ -1,4 +1,4 @@
-const CACHE='mesh-line-replacer-v0.8.6-wip.2';
+const CACHE='mesh-line-replacer-v0.8.6-wip.3';
 const APP_SHELL=[
   './','./index.html','./manifest.webmanifest',
   './app-v086-static/part00.txt','./app-v086-static/part01.txt','./app-v086-static/part02.txt','./app-v086-static/part03.txt','./app-v086-static/part04.txt',
