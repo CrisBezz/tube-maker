@@ -1,0 +1,12 @@
+
+// v0.9.0-wip.8 — force single footer/status line and current WIP labelling
+(function(){
+const VERSION='0.9.0-wip.8';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const bars=[...document.querySelectorAll('.mlr-statusbar')];
+if(bars.length){const keep=bars[bars.length-1];bars.slice(0,-1).forEach(b=>b.remove());const spans=keep.querySelectorAll('span');if(spans.length)spans[spans.length-1].textContent=`v${VERSION}`;}
+for(const el of [...document.querySelectorAll('footer,.footer,.status-footer,.bottom-bar,.version-row')]){if(el.closest('.mlr-statusbar'))continue;const t=(el.textContent||'').toLowerCase();if(/wip|version|faces|holes|exported/.test(t))el.style.display='none';}
+for(const el of [...document.body.children]){if(el.classList?.contains('mlr-statusbar'))continue;const cs=getComputedStyle(el);if(cs.bottom==='0px'){const t=(el.textContent||'').toLowerCase();if(/wip|v0\.|faces|holes|exported/.test(t)&&!el.classList?.contains('mlr-topbar'))el.style.display='none';}}
+})();
