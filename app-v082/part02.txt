@@ -1,0 +1,150 @@
+/div>
+</dialog>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const $ = (s) => document.querySelector(s);
+const viewport = $('#viewport'), hint = $('#hint'), statusEl = $('#status'), statsEl = $('#stats');
+const fileInput = $('#fileInput'), generateBtn = $('#generateBtn'), exportBtn = $('#exportBtn'), exampleBtn = $('#exampleBtn');
+const aboutBtn = $('#aboutBtn'), aboutDialog = $('#aboutDialog'), closeAboutBtn = $('#closeAboutBtn');
+const replaceMode = $('#replaceMode');
+const edgeMode = $('#edgeMode'), angle = $('#angle'), angleOut = $('#angleOut'), quadAngle = $('#quadAngle'), quadAngleOut = $('#quadAngleOut'), unmatched = $('#unmatched'), minLength = $('#minLength');
+const diameter = $('#diameter'), sides = $('#sides'), sidesOut = $('#sidesOut'), caps = $('#caps'), showSource = $('#showSource');
+const webWidth = $('#webWidth'), doubleSidedWeb = $('#doubleSidedWeb');
+const solidThickness = $('#solidThickness'), solidDirection = $('#solidDirection'), autoLimitThickness = $('#autoLimitThickness');
+const torusSizeMode = $('#torusSizeMode'), torusRelativeSizeControls = $('#torusRelativeSizeControls'), torusConstantSizeControls = $('#torusConstantSizeControls');
+const torusRingScale = $('#torusRingScale'), torusRingScaleOut = $('#torusRingScaleOut'), torusTubeScale = $('#torusTubeScale'), torusTubeScaleOut = $('#torusTubeScaleOut');
+const torusConstantRing = $('#torusConstantRing'), torusConstantTube = $('#torusConstantTube'), torusNormalMode = $('#torusNormalMode');
+const torusRingSegments = $('#torusRingSegments'), torusRingSegmentsOut = $('#torusRingSegmentsOut'), torusTubeSegments = $('#torusTubeSegments'), torusTubeSegmentsOut = $('#torusTubeSegmentsOut');
+const torusNormalOffset = $('#torusNormalOffset'), torusTiltX = $('#torusTiltX'), torusTiltXOut = $('#torusTiltXOut'), torusTiltY = $('#torusTiltY'), torusTiltYOut = $('#torusTiltYOut'), torusFlatShading = $('#torusFlatShading');
+const symmetry = $('#symmetry'), symmetryAxis = $('#symmetryAxis'), symmetrySide = $('#symmetrySide'), showSymmetryPlane = $('#showSymmetryPlane');
+const junctionMode = $('#junctionMode'), hubScale = $('#hubScale'), hubScaleOut = $('#hubScaleOut'), hubDetail = $('#hubDetail');
+const tubeSection = $('#tubeSection'), webSection = $('#webSection'), solidWebSection = $('#solidWebSection'), torusSection = $('#torusSection'), junctionSection = $('#junctionSection');
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 100000);
+camera.position.set(3, 2.2, 3);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+viewport.prepend(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.screenSpacePanning = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 2.2));
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
+keyLight.position.set(4, 7, 5);
+scene.add(keyLight);
+const grid = new THREE.GridHelper(10, 20, 0x697180, 0x3c424c);
+scene.add(grid);
+
+let sourceRoot = null;
+let resultRoot = null;
+let sourceName = 'mesh-line-replacer';
+let originalObjQuadEdges = null;
+let originalObjQuadFaces = null;
+let symmetryPlaneHelper = null;
+let outputMetrics = { faces: 0, holes: 0, exported: false };
+const APP_VERSION = '0.8.2';
+
+function setStatus(message) { statusEl.textContent = message; }
+function sourceBounds() { return sourceRoot ? new THREE.Box3().setFromObject(sourceRoot) : new THREE.Box3(); }
+function symmetryCentre() {
+  const box = sourceBounds();
+  return box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+}
+function updateTorusSizeUI() {
+  const constant = torusSizeMode.value === 'constant';
+  torusRelativeSizeControls.classList.toggle('hidden', constant);
+  torusConstantSizeControls.classList.toggle('hidden', !constant);
+}
+function updateModeUI() {
+  const surface = replaceMode.value === 'surfaceWeb';
+  const solid = replaceMode.value === 'solidWeb';
+  const torus = replaceMode.value === 'faceTorus';
+  const tube = replaceMode.value === 'tube';
+  tubeSection.classList.toggle('hidden', !tube);
+  junctionSection.classList.toggle('hidden', !tube);
+  webSection.classList.toggle('hidden', !(surface || solid));
+  solidWebSection.classList.toggle('hidden', !solid);
+  torusSection.classList.toggle('hidden', !torus);
+}
+function updateSymmetryPlane() {
+  if (symmetryPlaneHelper) {
+    symmetryPlaneHelper.geometry.dispose();
+    symmetryPlaneHelper.material.dispose();
+    symmetryPlaneHelper.removeFromParent();
+    symmetryPlaneHelper = null;
+  }
+  if (!sourceRoot || !symmetry.checked || !showSymmetryPlane.checked) return;
+  const box = sourceBounds();
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const centre = box.getCenter(new THREE.Vector3());
+  const axis = symmetryAxis.value;
+  let width, height;
+  if (axis === 'x') { width = Math.max(size.z, 0.001); height = Math.max(size.y, 0.001); }
+  else if (axis === 'y') { width = Math.max(size.x, 0.001); height = Math.max(size.z, 0.001); }
+  else { width = Math.max(size.x, 0.001); height = Math.max(size.y, 0.001); }
+  const geo = new THREE.PlaneGeometry(width * 1.15, height * 1.15);
+  if (axis === 'x') geo.rotateY(Math.PI / 2);
+  else if (axis === 'y') geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x55b7ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
+  symmetryPlaneHelper = new THREE.Mesh(geo, mat);
+  symmetryPlaneHelper.position.copy(centre);
+  symmetryPlaneHelper.renderOrder = 10;
+  scene.add(symmetryPlaneHelper);
+}
+function disposeObject(root) {
+  if (!root) return;
+  root.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose?.();
+    const mat = obj.material;
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.()); else mat?.dispose?.();
+  });
+  root.removeFromParent();
+}
+function fitCamera(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  if (!Number.isFinite(sphere.radius) || sphere.radius <= 0) return;
+  controls.target.copy(sphere.center);
+  camera.near = Math.max(sphere.radius / 1000, 0.001);
+  camera.far = Math.max(sphere.radius * 100, 100);
+  camera.position.copy(sphere.center).add(new THREE.Vector3(1.5, 1.1, 1.5).normalize().multiplyScalar(sphere.radius * 3));
+  camera.updateProjectionMatrix();
+  controls.update();
+  grid.scale.setScalar(Math.max(sphere.radius, 1));
+  grid.position.y = box.min.y;
+}
+function normaliseImported(root) {
+  const group = new THREE.Group();
+  root.updateMatrixWorld(true);
+  root.traverse((obj) => {
+    if (!obj.isMesh || !obj.geometry) return;
+    const geometry = obj.geometry.clone();
+    geometry.applyMatrix4(obj.matrixWorld);
+    if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    const material = new THREE.MeshStandardMaterial({ color: 0x9ba5b4, roughness: 0.75, metalness: 0.05, side: THREE.DoubleSide, transparent: true, opacity: 0.42 });
+    group.add(new THREE.Mesh(geometry, material));
+  });
+  return group;
+}
+function parseObjData(text) {
+  const vertices = [];
+  const edgeMap = new Map();
+  const faces = [];
+  const lines = text.split(/\r?\n/);
+  const resolveIndex = (raw) => {
+    const value = Number(raw);
+    return value < 0 ? vertices.length + value : value - 1;
+  };
+  const addIndexEdge = (ia, ib) => {
+    i
