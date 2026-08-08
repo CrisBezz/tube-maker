@@ -1,0 +1,181 @@
+    indices.push(oi, oj, ij, oi, ij, ii);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return { geometry, usedWidth: inset.usedWidth };
+}
+async function generateTubeResult() {
+  const result = collectEdges();
+  const symmetryResult = applySymmetryToEdges(result.edges);
+  const edges = symmetryResult.edges;
+  if (!edges.length) { setStatus(edgeMode.value === 'objQuads' ? 'No original OBJ quad faces were found' : 'No eligible edges found'); return; }
+  if (edges.length > 50000 && !confirm(`This model has ${edges.length.toLocaleString()} edges. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
+  const junctionData = buildJunctionData(edges);
+  setStatus(`Generating ${edges.length.toLocaleString()} tubes${junctionData.hubs.length ? ` and ${junctionData.hubs.length.toLocaleString()} hubs` : ''}…`);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({ color: 0xe6b85c, roughness: 0.58, metalness: 0.08, flatShading: true });
+  const batchSize = 1000;
+  for (let start = 0; start < edges.length; start += batchSize) {
+    const geometries = edges.slice(start, start + batchSize).map(([a, b], localIndex) => {
+      const edgeIndex = start + localIndex;
+      return facetedTubeForEdge(a, b, junctionData.cuts[edgeIndex][0], junctionData.cuts[edgeIndex][1]);
+    });
+    const merged = mergeGeometries(geometries, false);
+    geometries.forEach((g) => g.dispose());
+    if (merged) resultRoot.add(new THREE.Mesh(merged, material));
+    if (start % 5000 === 0) { setStatus(`Generating… ${Math.min(start + batchSize, edges.length).toLocaleString()} / ${edges.length.toLocaleString()}`); await new Promise((resolve) => requestAnimationFrame(resolve)); }
+  }
+  if (junctionData.hubs.length) {
+    const hubBatchSize = 500;
+    for (let start = 0; start < junctionData.hubs.length; start += hubBatchSize) {
+      const geometries = junctionData.hubs.slice(start, start + hubBatchSize).map((hub) => hubGeometry(hub.point));
+      const merged = mergeGeometries(geometries, false);
+      geometries.forEach((g) => g.dispose());
+      if (merged) resultRoot.add(new THREE.Mesh(merged, material));
+    }
+  }
+  scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
+  const modeLabel = junctionMode.options[junctionMode.selectedIndex].text;
+  setStatus(`Generated ${edges.length.toLocaleString()} tubes • ${modeLabel}${junctionData.hubs.length ? ` • ${junctionData.hubs.length.toLocaleString()} welded hubs` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${result.info ? ` • ${result.info}` : ''}`);
+  updateStats(edges.length, junctionData.hubs.length, 0, false, 0, resultRoot.children[0]?.geometry);
+}
+
+function buildInsetWebGeometry(faces) {
+  const geometries = [];
+  let usedFaces = 0, limitedFaces = 0;
+  const requestedWidth = Number(webWidth.value);
+  for (const face of faces) {
+    const built = faceWebGeometry(face);
+    if (!built) continue;
+    usedFaces++;
+    if (built.usedWidth < requestedWidth * 0.999) limitedFaces++;
+    geometries.push(built.geometry);
+  }
+  if (!geometries.length) return { geometry: null, usedFaces, limitedFaces };
+  const merged = mergeGeometries(geometries, false);
+  geometries.forEach((g) => g.dispose());
+  if (!merged) return { geometry: null, usedFaces, limitedFaces };
+  const welded = mergeVertices(merged, 1e-6);
+  merged.dispose();
+  welded.computeVertexNormals();
+  return { geometry: welded, usedFaces, limitedFaces };
+}
+function countGeometryFaces(geometry) {
+  if (!geometry) return 0;
+  return geometry.index ? Math.floor(geometry.index.count / 3) : Math.floor((geometry.getAttribute('position')?.count || 0) / 3);
+}
+function countBoundaryLoops(geometry) {
+  if (!geometry) return 0;
+  let working = geometry.index ? geometry : mergeVertices(geometry.clone(), 1e-6);
+  const index = working.index;
+  if (!index) { if (working !== geometry) working.dispose(); return 0; }
+  const edgeUse = new Map();
+  for (let i = 0; i < index.count; i += 3) {
+    const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+    for (let e = 0; e < 3; e++) {
+      const a = tri[e], b = tri[(e + 1) % 3];
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (!edgeUse.has(key)) edgeUse.set(key, { count: 0, a, b });
+      edgeUse.get(key).count++;
+    }
+  }
+  const adjacency = new Map();
+  const link = (a,b) => { if (!adjacency.has(a)) adjacency.set(a,new Set()); adjacency.get(a).add(b); };
+  for (const edge of edgeUse.values()) if (edge.count === 1) { link(edge.a,edge.b); link(edge.b,edge.a); }
+  const visited = new Set();
+  let loops = 0;
+  for (const start of adjacency.keys()) {
+    if (visited.has(start)) continue;
+    loops++;
+    const stack=[start]; visited.add(start);
+    while (stack.length) {
+      const v=stack.pop();
+      for (const n of adjacency.get(v) || []) if (!visited.has(n)) { visited.add(n); stack.push(n); }
+    }
+  }
+  if (working !== geometry) working.dispose();
+  return loops;
+}
+function setOutputMetrics({ faces = outputMetrics.faces, holes = outputMetrics.holes, exported = outputMetrics.exported } = {}) {
+  outputMetrics = { faces, holes, exported };
+  const bits = [];
+  if (faces) bits.push(`${faces.toLocaleString()} faces`);
+  if (holes) bits.push(`${holes.toLocaleString()} ${holes === 1 ? 'hole' : 'holes'}`);
+  if (exported) bits.push('Exported');
+  statsEl.textContent = bits.join(' • ');
+}
+function triangleNormal(a,b,c) {
+  return b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+}
+function orientTriangle(indices, positions, desiredNormal) {
+  const a = positions[indices[0]], b = positions[indices[1]], c = positions[indices[2]];
+  const n = triangleNormal(a,b,c);
+  return n.dot(desiredNormal) >= 0 ? indices : [indices[0],indices[2],indices[1]];
+}
+function signedMeshVolume(positions, indices) {
+  let volume = 0;
+  for (let i=0;i<indices.length;i+=3) {
+    const a=positions[indices[i]], b=positions[indices[i+1]], c=positions[indices[i+2]];
+    volume += a.dot(b.clone().cross(c)) / 6;
+  }
+  return volume;
+}
+function cleanAndWeldGeometry(positions, indices, tolerance=1e-6) {
+  const raw = new THREE.BufferGeometry();
+  raw.setAttribute('position', new THREE.Float32BufferAttribute(positions.flatMap(p=>[p.x,p.y,p.z]),3));
+  raw.setIndex(indices);
+  let welded = mergeVertices(raw, tolerance);
+  raw.dispose();
+  const pos=welded.getAttribute('position'), idx=welded.index;
+  if (!pos || !idx) return welded;
+  const cleaned=[];
+  const seen=new Set();
+  for (let i=0;i<idx.count;i+=3) {
+    const a=idx.getX(i), b=idx.getX(i+1), c=idx.getX(i+2);
+    if (a===b || b===c || c===a) continue;
+    const pa=new THREE.Vector3().fromBufferAttribute(pos,a), pb=new THREE.Vector3().fromBufferAttribute(pos,b), pc=new THREE.Vector3().fromBufferAttribute(pos,c);
+    if (pb.clone().sub(pa).cross(pc.clone().sub(pa)).lengthSq()<1e-18) continue;
+    const canonical=[a,b,c].slice().sort((x,y)=>x-y).join('|');
+    if (seen.has(canonical)) continue;
+    seen.add(canonical); cleaned.push(a,b,c);
+  }
+  welded.setIndex(cleaned);
+  welded.computeVertexNormals();
+  return welded;
+}
+function analyseClosedMesh(geometry) {
+  const idx=geometry.index;
+  const edgeUse=new Map();
+  if (!idx) return { boundaryEdges:0, nonManifoldEdges:0, watertight:false };
+  for (let i=0;i<idx.count;i+=3) {
+    const tri=[idx.getX(i),idx.getX(i+1),idx.getX(i+2)];
+    for (let e=0;e<3;e++) {
+      const a=tri[e],b=tri[(e+1)%3],key=a<b?`${a}|${b}`:`${b}|${a}`;
+      edgeUse.set(key,(edgeUse.get(key)||0)+1);
+    }
+  }
+  let boundaryEdges=0,nonManifoldEdges=0;
+  for (const count of edgeUse.values()) { if (count===1) boundaryEdges++; else if (count!==2) nonManifoldEdges++; }
+  return { boundaryEdges, nonManifoldEdges, watertight:boundaryEdges===0&&nonManifoldEdges===0 };
+}
+function solidifySurfaceGeometry(surfaceGeometry) {
+  let base = surfaceGeometry.index ? surfaceGeometry.clone() : mergeVertices(surfaceGeometry.clone(), 1e-6);
+  if (!base.index) base = mergeVertices(base, 1e-6);
+  const pos=base.getAttribute('position'), index=base.index;
+  if (!pos || !index) { base.dispose(); return null; }
+
+  let thickness=Math.max(Number(solidThickness.value),1e-7);
+  if (autoLimitThickness.checked) {
+    let minEdge=Infinity; const seen=new Set();
+    for (let i=0;i<index.count;i+=3) {
+      const tri=[index.getX(i),index.getX(i+1),index.getX(i+2)];
+      for (let e=0;e<3;e++) {
+        const a=tri[e],b=tri[(e+1)%3],key=a<b?`${a}|${b}`:`${b}|${a}`;
+        if (seen.has(key)) continue; seen.add(key);
+        const pa=new THREE.Vector3().fromBufferAttribute(pos,a),pb=new THREE.Vector3().fromBufferAttribute(pos,b);
+        minEdge=Math.min(minEdge,pa.distanceTo(pb));
+      }
