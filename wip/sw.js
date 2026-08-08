@@ -1,9 +1,9 @@
-const CACHE='mesh-line-replacer-v0.8.8-wip.1';
+const CACHE='mesh-line-replacer-v0.8.9-wip.1';
 const APP_SHELL=[
   './','./index.html','./manifest.webmanifest',
   './app-v086-static/part00.txt','./app-v086-static/part01.txt','./app-v086-static/part02.txt','./app-v086-static/part03.txt','./app-v086-static/part04.txt',
   './app-v086-static/part05.txt','./app-v086-static/part06.txt','./app-v086-static/part07.txt','./app-v086-static/part08.txt','./app-v086-static/part08b.txt','./app-v086-static/part09.txt',
-  './app-v087-static/grouped-instances.txt','./app-v088-static/view-modes.txt'
+  './app-v087-static/grouped-instances.txt','./app-v088-static/view-modes.txt','./app-v089-static/instance-density.txt'
 ];
 self.addEventListener('install',(event)=>event.waitUntil(caches.open(CACHE).then((cache)=>cache.addAll(APP_SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',(event)=>event.waitUntil(caches.keys().then((keys)=>Promise.all(keys.filter((key)=>key!==CACHE && key.startsWith('mesh-line-replacer-v0.8.')).map((key)=>caches.delete(key)))).then(()=>self.clients.claim())));
