@@ -1,0 +1,194 @@
+      inRadius = Math.min(inRadius, pointSegmentDistance3D(centre, face[i], face[(i + 1) % face.length]));
+    }
+    if (!Number.isFinite(inRadius) || inRadius <= 1e-8) return null;
+    masterMajor = Number(torusRingScale.value);
+    masterTube = Math.max(Number(torusTubeScale.value), 0.005);
+    masterMajor = Math.max(masterMajor, masterTube * 1.05);
+    const maxOuter = 0.98;
+    let fitFactor = 1;
+    if (masterMajor + masterTube > maxOuter) fitFactor = maxOuter / (masterMajor + masterTube);
+    uniformScale = inRadius * fitFactor;
+  }
+
+  const frame = torusLocalFrame(face, normal, centre);
+  const basisMatrix = new THREE.Matrix4().makeBasis(frame.xAxis, frame.yAxis, frame.normal);
+  const qFrame = new THREE.Quaternion().setFromRotationMatrix(basisMatrix);
+  const qTiltX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), THREE.MathUtils.degToRad(Number(torusTiltX.value || 0)));
+  const qTiltY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), THREE.MathUtils.degToRad(Number(torusTiltY.value || 0)));
+  const qLocalTilt = qTiltY.clone().multiply(qTiltX);
+  const quaternion = qFrame.clone().multiply(qLocalTilt);
+  const offset = Number(torusNormalOffset.value || 0);
+  const position = centre.clone().addScaledVector(normal, offset);
+  const scale = new THREE.Vector3(uniformScale, uniformScale, uniformScale);
+  const matrix = new THREE.Matrix4().compose(position, quaternion, scale);
+  return { matrix, masterMajor, masterTube };
+}
+
+function createMasterTorusGeometry(faces) {
+  for (const face of faces) {
+    const data = torusInstanceDataForFace(face);
+    if (!data) continue;
+    return new THREE.TorusGeometry(
+      data.masterMajor,
+      data.masterTube,
+      Number(torusTubeSegments.value),
+      Number(torusRingSegments.value)
+    );
+  }
+  return null;
+}
+
+function nomadNodeExtras(matrix, selected = false) {
+  const identity = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+  return {
+    nomad: {
+      matrix: Array.from(matrix.elements),
+      selected,
+      transform_reset: false,
+      selected_main: selected,
+      node_collapse: true,
+      lock: false,
+      pivot_delta: identity.slice(),
+      visible: true,
+      mask_delta: identity.slice()
+    }
+  };
+}
+
+function buildNomadSharedNodeScene(instancedMesh) {
+  const exportScene = new THREE.Scene();
+  exportScene.name = 'NomadSharedTorusInstances';
+  const sharedGeometry = instancedMesh.geometry;
+  const sharedMaterial = instancedMesh.material;
+  const matrix = new THREE.Matrix4();
+  for (let i = 0; i < instancedMesh.count; i++) {
+    instancedMesh.getMatrixAt(i, matrix);
+    const e = matrix.elements;
+    const sx = Math.hypot(e[0], e[1], e[2]);
+    const sy = Math.hypot(e[4], e[5], e[6]);
+    const sz = Math.hypot(e[8], e[9], e[10]);
+    if (sx < 1e-10 || sy < 1e-10 || sz < 1e-10) continue;
+    const node = new THREE.Mesh(sharedGeometry, sharedMaterial);
+    node.name = 'Torus';
+    node.matrixAutoUpdate = false;
+    node.matrix.copy(matrix);
+    node.userData = nomadNodeExtras(matrix, false);
+    exportScene.add(node);
+  }
+  exportScene.userData = { meshLineReplacer: { version: '0.8.4', instanceMode: 'shared-gltf-nodes', target: 'Nomad Sculpt' } };
+  return exportScene;
+}
+
+function buildBakedTorusRoot(instancedMesh) {
+  const bakedRoot = new THREE.Group();
+  bakedRoot.name = 'BakedTorusCopies';
+  const sourceGeometry = instancedMesh.geometry;
+  const material = instancedMesh.material.clone();
+  const batchSize = 300;
+  const matrix = new THREE.Matrix4();
+  for (let start = 0; start < instancedMesh.count; start += batchSize) {
+    const geometries = [];
+    for (let i = start; i < Math.min(start + batchSize, instancedMesh.count); i++) {
+      instancedMesh.getMatrixAt(i, matrix);
+      const g = sourceGeometry.clone();
+      g.applyMatrix4(matrix);
+      geometries.push(g);
+    }
+    const merged = mergeGeometries(geometries, false);
+    geometries.forEach((g) => g.dispose());
+    if (merged) bakedRoot.add(new THREE.Mesh(merged, material));
+  }
+  return bakedRoot;
+}
+
+async function generateFaceTorusResult() {
+  const facesResult = collectFaces();
+  const orientedFaces = orientTorusFaces(facesResult.faces);
+  const symmetryResult = applySymmetryToFaces(orientedFaces);
+  const faces = symmetryResult.faces;
+  if (!faces.length) { setStatus('No usable source faces were found for torus replacement'); return; }
+  if (faces.length > 100000 && !confirm(`This model has ${faces.length.toLocaleString()} faces. Continue with instanced tori?`)) { setStatus('Generation cancelled'); return; }
+  setStatus(`Creating shared torus master and ${faces.length.toLocaleString()} instances…`);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  resultRoot.name = 'TorusInstanceSet';
+
+  const masterGeometry = createMasterTorusGeometry(faces);
+  if (!masterGeometry) { setStatus('No valid master torus could be generated'); return; }
+  masterGeometry.name = 'MasterTorusGeometry';
+  const material = new THREE.MeshStandardMaterial({ color: 0xd7a6f4, roughness: 0.55, metalness: 0.06, flatShading: torusFlatShading.checked });
+  material.name = 'MasterTorusMaterial';
+  const instanced = new THREE.InstancedMesh(masterGeometry, material, faces.length);
+  instanced.name = 'FaceTorusInstances';
+  instanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+  let made = 0, skipped = 0;
+  const matrix = new THREE.Matrix4();
+  for (let i = 0; i < faces.length; i++) {
+    const data = torusInstanceDataForFace(faces[i]);
+    if (!data) { skipped++; matrix.makeScale(0,0,0); instanced.setMatrixAt(i, matrix); continue; }
+    instanced.setMatrixAt(i, data.matrix);
+    made++;
+  }
+  instanced.instanceMatrix.needsUpdate = true;
+  instanced.count = faces.length;
+  resultRoot.add(instanced);
+  scene.add(resultRoot);
+  sourceRoot.visible = showSource.checked;
+  exportBtn.disabled = false;
+
+  const masterFaces = masterGeometry.index ? masterGeometry.index.count / 3 : masterGeometry.getAttribute('position').count / 3;
+  const outputFaces = masterFaces * made;
+  setStatus(`Generated ${made.toLocaleString()} shared torus instances from one master mesh${skipped ? ` • ${skipped.toLocaleString()} degenerate faces skipped` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${facesResult.info ? ` • ${facesResult.info}` : ''}`);
+  setOutputMetrics({ faces: Math.round(outputFaces), holes: made, exported: false });
+}
+
+async function generateResult() {
+  if (!sourceRoot) return;
+  generateBtn.disabled = true;
+  try {
+    if (replaceMode.value === 'surfaceWeb') await generateSurfaceWebResult();
+    else if (replaceMode.value === 'solidWeb') await generateSolidWebResult();
+    else if (replaceMode.value === 'faceTorus') await generateFaceTorusResult();
+    else await generateTubeResult();
+  } catch (error) {
+    console.error(error);
+    setStatus(`Generation failed: ${error.message || error}`);
+  } finally {
+    generateBtn.disabled = false;
+  }
+}
+function exportGlb() {
+  if (!resultRoot) return;
+  exportBtn.disabled = true;
+  setStatus('Preparing GLB…');
+  const suffix = replaceMode.value === 'surfaceWeb' ? 'surface-web' : replaceMode.value === 'solidWeb' ? 'solid-surface-web' : replaceMode.value === 'faceTorus' ? (torusExportMode.value === 'instances' ? 'face-tori-instances' : 'face-tori-baked') : 'tubes';
+
+  let exportObject = resultRoot;
+  let temporaryRoot = null;
+  if (replaceMode.value === 'faceTorus') {
+    const instanced = resultRoot.getObjectByProperty('isInstancedMesh', true) || resultRoot.children.find((c) => c.isInstancedMesh);
+    if (instanced && torusExportMode.value === 'baked') {
+      setStatus('Baking torus instances for compatibility…');
+      temporaryRoot = buildBakedTorusRoot(instanced);
+      exportObject = temporaryRoot;
+    } else if (instanced) {
+      setStatus('Building Nomad shared-node GLB…');
+      temporaryRoot = buildNomadSharedNodeScene(instanced);
+      exportObject = temporaryRoot;
+    }
+  }
+
+  new GLTFExporter().parse(exportObject, (result) => {
+    const blob = new Blob([result], { type: 'model/gltf-binary' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sourceName}-${suffix}.glb`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    if (temporaryRoot) disposeObject(temporaryRoot);
+    setStatus(replaceMode.value === 'faceTorus' && torusExportMode.value === 'instances' ? 'Nomad shared-node GLB exported' : 'GLB exported');
