@@ -1,0 +1,177 @@
+dialSegments;
+    indices.push(i,j,radialSegments+j, i,radialSegments+j,radialSegments+i);
+  }
+  if (caps.checked) {
+    const startCentre = positions.length/3; positions.push(a.x,a.y,a.z);
+    const endCentre = positions.length/3; positions.push(b.x,b.y,b.z);
+    for (let i=0;i<radialSegments;i++) {
+      const j=(i+1)%radialSegments;
+      indices.push(startCentre,j,i);
+      indices.push(endCentre,radialSegments+i,radialSegments+j);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+function hubGeometry(point) {
+  const radius = Number(diameter.value) * Number(hubScale.value) / 2;
+  const detail = Number(hubDetail.value);
+  const geometry = new THREE.IcosahedronGeometry(radius, detail);
+  geometry.translate(point.x,point.y,point.z);
+  return geometry;
+}
+function polygonBasis(points) {
+  const p0 = points[0];
+  let normal = null;
+  for (let i = 1; i < points.length - 1; i++) {
+    const n = points[i].clone().sub(p0).cross(points[i + 1].clone().sub(p0));
+    if (n.lengthSq() > 1e-12) { normal = n.normalize(); break; }
+  }
+  if (!normal) return null;
+  const u = points[1].clone().sub(p0).normalize();
+  const v = normal.clone().cross(u).normalize();
+  return { origin: p0.clone(), normal, u, v };
+}
+function projectPolygon(points, basis) {
+  return points.map((p) => {
+    const d = p.clone().sub(basis.origin);
+    return { x: d.dot(basis.u), y: d.dot(basis.v) };
+  });
+}
+function signedArea2D(poly) {
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area * 0.5;
+}
+function lineIntersection(a1, a2, b1, b2) {
+  const dax = a2.x - a1.x, day = a2.y - a1.y;
+  const dbx = b2.x - b1.x, dby = b2.y - b1.y;
+  const cross = dax * dby - day * dbx;
+  if (Math.abs(cross) < 1e-10) return null;
+  const t = ((b1.x - a1.x) * dby - (b1.y - a1.y) * dbx) / cross;
+  return { x: a1.x + t * dax, y: a1.y + t * day };
+}
+function insetPolygon2D(poly, distance) {
+  const area = signedArea2D(poly);
+  if (Math.abs(area) < 1e-12) return null;
+  const ccw = area > 0;
+  const lines = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p0 = poly[i], p1 = poly[(i + 1) % poly.length];
+    const ex = p1.x - p0.x, ey = p1.y - p0.y;
+    const len = Math.hypot(ex, ey);
+    if (len < 1e-12) return null;
+    const nx = ccw ? -ey / len : ey / len;
+    const ny = ccw ? ex / len : -ex / len;
+    lines.push({ a: { x: p0.x + nx * distance, y: p0.y + ny * distance }, b: { x: p1.x + nx * distance, y: p1.y + ny * distance } });
+  }
+  const result = [];
+  for (let i = 0; i < poly.length; i++) {
+    const prev = lines[(i - 1 + poly.length) % poly.length];
+    const curr = lines[i];
+    const p = lineIntersection(prev.a, prev.b, curr.a, curr.b);
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+    result.push(p);
+  }
+  const newArea = signedArea2D(result);
+  if (!Number.isFinite(newArea) || Math.sign(newArea) !== Math.sign(area) || Math.abs(newArea) < 1e-12) return null;
+  return result;
+}
+function insetFace3D(points, requestedDistance) {
+  const basis = polygonBasis(points);
+  if (!basis) return null;
+  const poly = projectPolygon(points, basis);
+  let distance = requestedDistance;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const inset2d = insetPolygon2D(poly, distance);
+    if (inset2d) {
+      const inner = inset2d.map((p) => basis.origin.clone().addScaledVector(basis.u, p.x).addScaledVector(basis.v, p.y));
+      return { inner, usedWidth: distance };
+    }
+    distance *= 0.6;
+  }
+  return null;
+}
+function faceWebGeometry(facePoints) {
+  if (facePoints.length < 3) return null;
+  const inset = insetFace3D(facePoints, Number(webWidth.value));
+  if (!inset) return null;
+  const positions = [];
+  const indices = [];
+  facePoints.forEach((p) => positions.push(p.x, p.y, p.z));
+  inset.inner.forEach((p) => positions.push(p.x, p.y, p.z));
+  const n = facePoints.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const oi = i, oj = j, ii = n + i, ij = n + j;
+    indices.push(oi, oj, ij, oi, ij, ii);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return { geometry, usedWidth: inset.usedWidth };
+}
+async function generateTubeResult() {
+  const result = collectEdges();
+  const symmetryResult = applySymmetryToEdges(result.edges);
+  const edges = symmetryResult.edges;
+  if (!edges.length) { setStatus(edgeMode.value === 'objQuads' ? 'No original OBJ quad faces were found' : 'No eligible edges found'); return; }
+  if (edges.length > 50000 && !confirm(`This model has ${edges.length.toLocaleString()} edges. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
+  const junctionData = buildJunctionData(edges);
+  setStatus(`Generating ${edges.length.toLocaleString()} tubes${junctionData.hubs.length ? ` and ${junctionData.hubs.length.toLocaleString()} hubs` : ''}…`);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({ color: 0xe6b85c, roughness: 0.58, metalness: 0.08, flatShading: true });
+  const batchSize = 1000;
+  for (let start = 0; start < edges.length; start += batchSize) {
+    const geometries = edges.slice(start, start + batchSize).map(([a, b], localIndex) => {
+      const edgeIndex = start + localIndex;
+      return facetedTubeForEdge(a, b, junctionData.cuts[edgeIndex][0], junctionData.cuts[edgeIndex][1]);
+    });
+    const merged = mergeGeometries(geometries, false);
+    geometries.forEach((g) => g.dispose());
+    if (merged) resultRoot.add(new THREE.Mesh(merged, material));
+    if (start % 5000 === 0) { setStatus(`Generating… ${Math.min(start + batchSize, edges.length).toLocaleString()} / ${edges.length.toLocaleString()}`); await new Promise((resolve) => requestAnimationFrame(resolve)); }
+  }
+  if (junctionData.hubs.length) {
+    const hubBatchSize = 500;
+    for (let start = 0; start < junctionData.hubs.length; start += hubBatchSize) {
+      const geometries = junctionData.hubs.slice(start, start + hubBatchSize).map((hub) => hubGeometry(hub.point));
+      const merged = mergeGeometries(geometries, false);
+      geometries.forEach((g) => g.dispose());
+      if (merged) resultRoot.add(new THREE.Mesh(merged, material));
+    }
+  }
+  scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
+  const modeLabel = junctionMode.options[junctionMode.selectedIndex].text;
+  setStatus(`Generated ${edges.length.toLocaleString()} tubes • ${modeLabel}${junctionData.hubs.length ? ` • ${junctionData.hubs.length.toLocaleString()} welded hubs` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${result.info ? ` • ${result.info}` : ''}`);
+  updateStats(edges.length, junctionData.hubs.length, 0, false, 0, resultRoot.children[0]?.geometry);
+}
+
+function buildInsetWebGeometry(faces) {
+  const geometries = [];
+  let usedFaces = 0, limitedFaces = 0;
+  const requestedWidth = Number(webWidth.value);
+  for (const face of faces) {
+    const built = faceWebGeometry(face);
+    if (!built) continue;
+    usedFaces++;
+    if (built.usedWidth < requestedWidth * 0.999) limitedFaces++;
+    geometries.push(built.geometry);
+  }
+  if (!geometries.length) return { geometry: null, usedFaces, limitedFaces };
+  const merged = mergeGeometries(geometries, false);
+  geometries.forEach((g) => g.dispose());
+  if (!merged) return { geometry: null, usedFaces, limitedFaces };
+  const welded = mergeVertices(merged, 1e-6);
+  merged.dispose();
+  welded.computeVertexNormals();
+  return { geometry: welded, usedFaces, 
