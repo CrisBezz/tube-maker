@@ -1,0 +1,185 @@
+  setStatus(`Generated bevelled solid surface web • ${built.usedFaces.toLocaleString()} faces used${built.limitedFaces ? ` • ${built.limitedFaces.toLocaleString()} web widths auto-limited` : ''} • ${solid.vertexCaps.toLocaleString()} junction caps • ${solid.watertight ? 'watertight' : `${solid.boundaryEdges.toLocaleString()} open edges`} ${solid.nonManifoldEdges ? `• ${solid.nonManifoldEdges.toLocaleString()} non-manifold output edges ` : ''}• thickness ${solid.thickness.toPrecision(4)}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${facesResult.info ? ` • ${facesResult.info}` : ''}`);
+  updateStats(0,0,built.usedFaces,true,holeCount,solid.geometry);
+}
+async function generateSurfaceWebResult() {
+  const facesResult = collectFaces();
+  const orientedFaces = orientTorusFaces(facesResult.faces);
+  const symmetryResult = applySymmetryToFaces(orientedFaces);
+  const faces = symmetryResult.faces;
+  if (!faces.length) { setStatus('No usable source faces were found for the inset surface web'); return; }
+  if (faces.length > 50000 && !confirm(`This model has ${faces.length.toLocaleString()} faces. It may be slow or exceed iPad memory. Continue?`)) { setStatus('Generation cancelled'); return; }
+  setStatus(`Generating inset surface web from ${faces.length.toLocaleString()} faces…`);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  disposeObject(resultRoot);
+  resultRoot = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({ color: 0x86d5df, roughness: 0.72, metalness: 0.02, side: doubleSidedWeb.checked ? THREE.DoubleSide : THREE.FrontSide, flatShading: false });
+  const geometries = [];
+  let usedFaces = 0, limitedFaces = 0;
+  const requestedWidth = Number(webWidth.value);
+  const batchSize = 1000;
+  for (let start = 0; start < faces.length; start += batchSize) {
+    const chunkGeometries = [];
+    for (const face of faces.slice(start, start + batchSize)) {
+      const built = faceWebGeometry(face);
+      if (!built) continue;
+      usedFaces++;
+      if (built.usedWidth < requestedWidth * 0.999) limitedFaces++;
+      chunkGeometries.push(built.geometry);
+    }
+    if (chunkGeometries.length) {
+      const merged = mergeGeometries(chunkGeometries, false);
+      chunkGeometries.forEach((g) => g.dispose());
+      if (merged) geometries.push(merged);
+    }
+    if (start % 5000 === 0) { setStatus(`Generating… ${Math.min(start + batchSize, faces.length).toLocaleString()} / ${faces.length.toLocaleString()}`); await new Promise((resolve) => requestAnimationFrame(resolve)); }
+  }
+  if (!geometries.length) {
+    setStatus('No valid inset faces could be created. Try a smaller web width.');
+    return;
+  }
+  const merged = mergeGeometries(geometries, false);
+  geometries.forEach((g) => g.dispose());
+  if (!merged) {
+    setStatus('Failed to merge inset geometry.');
+    return;
+  }
+  const welded = mergeVertices(merged, 1e-6);
+  merged.dispose();
+  welded.computeVertexNormals();
+  resultRoot.add(new THREE.Mesh(welded, material));
+  scene.add(resultRoot); sourceRoot.visible = showSource.checked; exportBtn.disabled = false;
+  setStatus(`Generated inset surface web • ${usedFaces.toLocaleString()} faces used${limitedFaces ? ` • ${limitedFaces.toLocaleString()} auto-limited` : ''}${symmetryResult.mirrored ? ` • mirrored across ${symmetryAxis.value.toUpperCase()} centre plane` : ''}${facesResult.info ? ` • ${facesResult.info}` : ''}`);
+  updateStats(0, 0, usedFaces, false, countBoundaryLoops(welded), welded);
+}
+function polygonNormal(points) {
+  if (!points || points.length < 3) return null;
+  const n = new THREE.Vector3();
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i], b = points[(i + 1) % points.length];
+    n.x += (a.y - b.y) * (a.z + b.z);
+    n.y += (a.z - b.z) * (a.x + b.x);
+    n.z += (a.x - b.x) * (a.y + b.y);
+  }
+  if (n.lengthSq() < 1e-14) {
+    for (let i = 1; i < points.length - 1; i++) {
+      const c = points[i].clone().sub(points[0]).cross(points[i + 1].clone().sub(points[0]));
+      if (c.lengthSq() > 1e-14) return c.normalize();
+    }
+    return null;
+  }
+  return n.normalize();
+}
+function pointSegmentDistance3D(p, a, b) {
+  const ab = b.clone().sub(a);
+  const denom = ab.lengthSq();
+  if (denom < 1e-14) return p.distanceTo(a);
+  const t = THREE.MathUtils.clamp(p.clone().sub(a).dot(ab) / denom, 0, 1);
+  return p.distanceTo(a.clone().addScaledVector(ab, t));
+}
+function torusLocalFrame(face, rawNormal, centre) {
+  const normal = rawNormal.clone().normalize();
+  let xAxis = null;
+  let bestLen = 0;
+  for (let i = 0; i < face.length; i++) {
+    const edge = face[(i + 1) % face.length].clone().sub(face[i]);
+    edge.addScaledVector(normal, -edge.dot(normal));
+    const len = edge.lengthSq();
+    if (len > bestLen) { bestLen = len; xAxis = edge; }
+  }
+  if (!xAxis || bestLen < 1e-14) {
+    const helper = Math.abs(normal.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+    xAxis = new THREE.Vector3().crossVectors(helper, normal);
+  }
+  xAxis.normalize();
+  const yAxis = new THREE.Vector3().crossVectors(normal, xAxis).normalize();
+  xAxis.copy(new THREE.Vector3().crossVectors(yAxis, normal).normalize());
+  return { xAxis, yAxis, normal, centre };
+}
+function faceEdgeDirectionKey(a, b) {
+  const ka = vertexKey(a), kb = vertexKey(b);
+  return { key: ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`, dir: ka < kb ? 1 : -1 };
+}
+function faceSignedVolume(face) {
+  if (face.length < 3) return 0;
+  let volume = 0;
+  const a = face[0];
+  for (let i = 1; i < face.length - 1; i++) volume += a.dot(face[i].clone().cross(face[i + 1])) / 6;
+  return volume;
+}
+function faceAreaAndRadialScore(face, modelCentre) {
+  const normal = polygonNormal(face);
+  if (!normal) return { area: 0, score: 0 };
+  const centre = face.reduce((acc,p)=>acc.add(p), new THREE.Vector3()).multiplyScalar(1/face.length);
+  let area = 0;
+  const a = face[0];
+  for (let i=1;i<face.length-1;i++) area += face[i].clone().sub(a).cross(face[i+1].clone().sub(a)).length() * 0.5;
+  return { area, score: normal.dot(centre.clone().sub(modelCentre)) * area };
+}
+function orientTorusFaces(faces) {
+  const mode = torusNormalMode.value;
+  const out = faces.map((f)=>f.map((p)=>p.clone()));
+  if (mode === 'source' || !out.length) return out;
+  const edgeMap = new Map();
+  out.forEach((face, fi) => {
+    for (let i=0;i<face.length;i++) {
+      const e = faceEdgeDirectionKey(face[i], face[(i+1)%face.length]);
+      if (!edgeMap.has(e.key)) edgeMap.set(e.key, []);
+      edgeMap.get(e.key).push({ fi, dir: e.dir });
+    }
+  });
+  const adjacency = out.map(()=>[]);
+  for (const refs of edgeMap.values()) {
+    if (refs.length !== 2) continue;
+    const a = refs[0], b = refs[1];
+    const oppositeNeeded = a.dir === b.dir;
+    adjacency[a.fi].push({ fi: b.fi, toggle: oppositeNeeded });
+    adjacency[b.fi].push({ fi: a.fi, toggle: oppositeNeeded });
+  }
+  const flip = new Array(out.length).fill(null);
+  const components = [];
+  for (let seed=0; seed<out.length; seed++) {
+    if (flip[seed] !== null) continue;
+    flip[seed] = false;
+    const queue=[seed], comp=[];
+    while(queue.length) {
+      const i=queue.shift(); comp.push(i);
+      for (const link of adjacency[i]) {
+        const nextFlip = Boolean(flip[i]) !== Boolean(link.toggle);
+        if (flip[link.fi] === null) { flip[link.fi] = nextFlip; queue.push(link.fi); }
+      }
+    }
+    components.push(comp);
+  }
+  out.forEach((face,i)=>{ if (flip[i]) face.reverse(); });
+  const modelCentre = symmetryCentre();
+  for (const comp of components) {
+    let volume = 0, radialScore = 0, area = 0;
+    for (const i of comp) {
+      volume += faceSignedVolume(out[i]);
+      const r = faceAreaAndRadialScore(out[i], modelCentre); radialScore += r.score; area += r.area;
+    }
+    const scale = Math.max(sourceBounds().getSize(new THREE.Vector3()).length(), 1);
+    const volumeReliable = Math.abs(volume) > scale*scale*scale*1e-10;
+    const outwardNow = volumeReliable ? volume > 0 : radialScore >= 0;
+    const wantOutward = mode === 'outward';
+    if (outwardNow !== wantOutward) for (const i of comp) out[i].reverse();
+  }
+  return out;
+}
+function torusInstanceDataForFace(face) {
+  if (!face || face.length < 3) return null;
+  const centre = face.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / face.length);
+  const normal = polygonNormal(face);
+  if (!normal) return null;
+
+  let uniformScale = 1;
+  let masterMajor;
+  let masterTube;
+  if (torusSizeMode.value === 'constant') {
+    masterMajor = Number(torusConstantRing.value);
+    masterTube = Number(torusConstantTube.value);
+    if (!Number.isFinite(masterMajor) || !Number.isFinite(masterTube) || masterMajor <= 0 || masterTube <= 0) return null;
+    masterMajor = Math.max(masterMajor, masterTube * 1.01);
+  } else {
+    let inRadius = Infinity;
+    for (let i = 0; i < face.length; i++) {
