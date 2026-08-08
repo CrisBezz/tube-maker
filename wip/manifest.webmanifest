@@ -1,11 +1,11 @@
 {
-  "name": "Mesh Line Replacer WIP",
-  "short_name": "Mesh WIP",
-  "version": "0.9.0-wip.3",
-  "description": "Work-in-progress Mesh Line Replacer build with compact mode panels, context-sensitive controls, two-column iPad layout and persistent status strip.",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#111318",
-  "theme_color": "#191c22",
-  "orientation": "any"
+  "name":"Mesh Line Replacer WIP",
+  "short_name":"Mesh WIP",
+  "version":"0.9.0-wip.4",
+  "description":"Work-in-progress Mesh Line Replacer build with unified FILE, MODE and VIEW popover styling and left-anchored menu behaviour.",
+  "start_url":"./index.html",
+  "display":"standalone",
+  "background_color":"#111318",
+  "theme_color":"#191c22",
+  "orientation":"any"
 }
