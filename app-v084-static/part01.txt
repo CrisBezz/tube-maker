@@ -44,18 +44,18 @@
       </div>
     </aside>
   </main>
-  <footer class="status"><span id="status">Ready</span><span class="status-right"><span id="stats"></span><span class="version">v0.8.5-wip.1</span></span></footer>
+  <footer class="status"><span id="status">Ready</span><span class="status-right"><span id="stats"></span><span class="version">v0.8.5</span></span></footer>
 </div>
 <dialog id="aboutDialog">
   <div class="about-head"><h2>Mesh Line Replacer</h2><button id="closeAboutBtn" class="secondary">Close</button></div>
   <div class="about-body">
-    <span class="about-version">Version 0.8.5-wip.1</span>
-    <p>A touch-friendly Safari modelling utility for iPad. Imported models are processed locally on the device. This is a work-in-progress build; the live main build remains unchanged.</p>
+    <span class="about-version">Version 0.8.5</span>
+    <p>A touch-friendly Safari modelling utility for iPad. Imported models are processed locally on the device.</p>
     <h3>Current tools</h3>
-    <ul><li>Faceted Tubes</li><li>Inset Surface Web</li><li>Solid Surface Web</li><li>Torus per Face / Shared Node (experimental)</li><li>Quad reconstruction and original OBJ quad support</li><li>Symmetry and GLB export</li></ul>
+    <ul><li>Faceted Tubes</li><li>Inset Surface Web</li><li>Solid Surface Web</li><li>Torus per Face / Shared Node</li><li>Quad reconstruction and original OBJ quad support</li><li>Symmetry and GLB export</li></ul>
     <h3>Version history</h3>
     <ul>
-      <li><strong>v0.8.5-wip.1</strong> — Shared face-node torus placement with averaged node normals</li>
+      <li><strong>v0.8.5</strong> — Shared face-node torus placement with averaged node normals</li>
       <li><strong>v0.8.4</strong> — Nomad-compatible shared-node torus export</li>
       <li><strong>v0.8.3</strong> — Shared master torus instances and instanced GLB export</li>
       <li><strong>v0.8.2</strong> — Fixed local torus tilt, global normal direction and constant-size mode</li>
