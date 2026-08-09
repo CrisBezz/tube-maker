@@ -1,0 +1,38 @@
+
+// v0.9.0-wip.21 — Imported Instance inspector + Torus alignment selector
+(function(){
+const VERSION='0.9.0-wip.21';
+const panel=document.querySelector('.panel,.sidebar,.controls'); if(!panel)return;
+const style=document.createElement('style');style.textContent='.mlr21-hidden{display:none!important}';document.head.appendChild(style);
+const OLD=['hidden','mlr20-hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden'];
+function currentMode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();if(/import|custom|instance object/.test(s))return'custom';if(/torus/.test(s))return'torus';return'other'}
+function control(id){const e=document.getElementById(id);return e?.closest('.control')||e?.closest('label.check')||null}
+function reveal(el){if(!el)return;OLD.forEach(c=>el.classList.remove(c));el.classList.remove('mlr21-hidden');el.style.removeProperty('display')}
+function conceal(el){if(!el)return;el.classList.add('mlr21-hidden');el.style.setProperty('display','none','important')}
+function section(name){return panel.querySelector(`.mlr10-section[data-mlr10="${name}"]`)}
+function ensure(name){let s=section(name);if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10=name;s.innerHTML=`<summary>${name}</summary><div class="mlr10-body"></div>`;panel.appendChild(s)}reveal(s);return s}
+function move(id,name){const c=control(id);if(!c)return null;const s=ensure(name),body=s.querySelector('.mlr10-body')||s;reveal(c);body.appendChild(c);return c}
+function showNav(names){document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const t=b.dataset.mlr12Target||b.dataset.target||'';if(names.includes(t))reveal(b);else if(currentMode()==='custom'&&['General','Symmetry','Placement','Size','Orientation','Geometry / Quality'].includes(t)&&!names.includes(t))conceal(b)})}
+function cleanSection(name,allowedIds){const s=section(name);if(!s)return;const body=s.querySelector('.mlr10-body')||s;for(const c of [...body.querySelectorAll('.control,label.check')]){const own=allowedIds.some(id=>c.querySelector?.('#'+id)||c.id===id);if(!own)conceal(c)}}
+function applyCustomSize(){if(currentMode()!=='custom')return;const sm=document.getElementById('customSizeMode');if(!sm)return;const constant=sm.value==='constant';reveal(control('customSizeMode'));if(constant){conceal(control('customRelativeScale'));reveal(control('customConstantSize'))}else{reveal(control('customRelativeScale'));conceal(control('customConstantSize'))}const relLabel=document.querySelector('label[for="customRelativeScale"]');if(relLabel)relLabel.textContent='Scale';const absLabel=document.querySelector('label[for="customConstantSize"]');if(absLabel)absLabel.textContent='Constant object size'}
+function applyCustom(){if(currentMode()!=='custom')return;
+ const placement=['customPlacementMode','customDensity','customNormalMode','customNormalOffset'];
+ const size=['customSizeMode','customRelativeScale','customConstantSize'];
+ const orientation=['customAxis','customTiltX','customTiltY'];
+ const quality=['customRepairMaster','customFillHoles','customStrictManifold','customWeldTolerance'];
+ placement.forEach(id=>move(id,'Placement'));size.forEach(id=>move(id,'Size'));orientation.forEach(id=>move(id,'Orientation'));quality.forEach(id=>move(id,'Geometry / Quality'));
+ cleanSection('Placement',placement);cleanSection('Size',size);cleanSection('Orientation',orientation);cleanSection('Geometry / Quality',quality);
+ // Imported-instance mode must not inherit legacy source/tube/web controls or its old export selector.
+ ['angle','quadAngle','minLength','solidDirection','diameter','sides','hubScale','hubDetail','webWidth','solidThickness','torusSizeMode','torusRingScale','torusTubeScale','torusConstantRing','torusConstantTube','torusPlacementMode','torusDensity','torusNormalMode','torusNormalOffset','torusTiltX','torusTiltY','torusAxis','customExportMode'].forEach(id=>conceal(control(id)));
+ const gen=section('General');if(gen)conceal(gen);
+ ['Placement','Size','Orientation','Geometry / Quality'].forEach(n=>{const s=section(n);if(s){reveal(s);s.open=n==='Placement'}});
+ showNav(['Placement','Size','Orientation','Geometry / Quality']);applyCustomSize();
+}
+// Torus alignment selector: create it if absent so the orientation group contains the same ±axis choice as Imported Instance.
+function ensureTorusAxis(){let axis=document.getElementById('torusAxis');if(!axis){const tilt=control('torusTiltX');if(!tilt)return null;const wrap=document.createElement('div');wrap.className='control';wrap.innerHTML='<label for="torusAxis">Object alignment axis</label><select id="torusAxis"><option value="pz" selected>+Z → normal</option><option value="py">+Y → normal</option><option value="px">+X → normal</option><option value="nz">−Z → normal</option><option value="ny">−Y → normal</option><option value="nx">−X → normal</option></select>';tilt.insertAdjacentElement('beforebegin',wrap);axis=wrap.querySelector('select')}return axis}
+function applyTorusOrientation(){if(currentMode()!=='torus')return;ensureTorusAxis();['torusAxis','torusTiltX','torusTiltY'].forEach(id=>move(id,'Orientation'));const s=section('Orientation');if(s)reveal(s);showNav(['General','Symmetry','Placement','Size','Orientation','Geometry / Quality'])}
+function removeLegacyImport(){for(const el of document.querySelectorAll('button,a,label,.file-button')){if(el.closest('.mlr-filepop'))continue;const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t==='import model'||t==='import model…'||t==='import master object')conceal(el)}}
+function stamp(){document.title=`Mesh Line Replacer v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function refresh(){removeLegacyImport();if(currentMode()==='custom')applyCustom();else if(currentMode()==='torus')applyTorusOrientation();stamp()}
+document.getElementById('customSizeMode')?.addEventListener('change',()=>setTimeout(()=>{applyCustomSize();stamp()},0));for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>setTimeout(refresh,0));for(const id of ['generateBtn','generate','buildBtn'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(refresh,100));requestAnimationFrame(refresh);
+})();
