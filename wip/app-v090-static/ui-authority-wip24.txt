@@ -1,0 +1,51 @@
+
+// v0.9.0-wip.24 — single final UI/version authority after legacy mode handlers
+(function(){
+const VERSION='0.9.0-wip.24';
+const panel=document.querySelector('.panel,.sidebar,.controls'); if(!panel)return;
+const style=document.createElement('style');style.textContent='.mlr24-hidden{display:none!important}';document.head.appendChild(style);
+const OLD_HIDE=['hidden','mlr21-hidden','mlr20-hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden'];
+function mode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();if(/import|custom|instance object/.test(s))return'custom';if(/torus/.test(s))return'torus';if(/solid surface/.test(s))return'solid';if(/inset surface/.test(s))return'inset';if(/faceted/.test(s)||/tube/.test(s))return'tubes';return'other'}
+function control(id){const e=document.getElementById(id);return e?.closest('.control')||e?.closest('label.check')||null}
+function reveal(el){if(!el)return;OLD_HIDE.forEach(c=>el.classList.remove(c));el.classList.remove('mlr24-hidden');el.style.removeProperty('display')}
+function conceal(el){if(!el)return;el.classList.add('mlr24-hidden');el.style.setProperty('display','none','important')}
+function section(name){return panel.querySelector(`.mlr10-section[data-mlr10="${name}"]`)}
+function ensure(name){let s=section(name);if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10=name;s.innerHTML=`<summary>${name}</summary><div class="mlr10-body"></div>`;panel.appendChild(s)}reveal(s);return s}
+function move(id,name){const c=control(id);if(!c)return;const s=ensure(name),body=s.querySelector('.mlr10-body')||s;reveal(c);body.appendChild(c)}
+function clean(name,ids){const s=section(name);if(!s)return;const body=s.querySelector('.mlr10-body')||s;for(const c of [...body.querySelectorAll('.control,label.check')]){const own=ids.some(id=>c.querySelector?.('#'+id)||c.id===id);if(!own)conceal(c)}}
+function nav(names){document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const t=b.dataset.mlr12Target||b.dataset.target||'';if(names.includes(t))reveal(b);else if(['General','Symmetry','Placement','Size','Orientation','Geometry / Quality'].includes(t))conceal(b)})}
+function stamp(){document.title=`Mesh Line Replacer v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function removeLegacyButtons(){for(const el of document.querySelectorAll('button,a,label,.file-button')){if(el.closest('.mlr-filepop'))continue;const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t==='import model'||t==='import model…'||t==='import master object')conceal(el)}}
+function ensureTorusAxis(){let axis=document.getElementById('torusAxis');if(!axis){const tilt=control('torusTiltX');if(!tilt)return null;const wrap=document.createElement('div');wrap.className='control';wrap.innerHTML='<label for="torusAxis">Object alignment axis</label><select id="torusAxis"><option value="pz" selected>+Z → normal</option><option value="py">+Y → normal</option><option value="px">+X → normal</option><option value="nz">−Z → normal</option><option value="ny">−Y → normal</option><option value="nx">−X → normal</option></select>';tilt.insertAdjacentElement('beforebegin',wrap);axis=wrap.querySelector('select')}return axis}
+function applyTorus(){
+ const placement=['torusPlacementMode','torusDensity','torusNormalMode','torusNormalOffset'];
+ const size=['torusSizeMode','torusRingScale','torusTubeScale','torusConstantRing','torusConstantTube'];
+ const orientation=['torusAxis','torusTiltX','torusTiltY'];
+ ensureTorusAxis();placement.forEach(id=>move(id,'Placement'));size.forEach(id=>move(id,'Size'));orientation.forEach(id=>move(id,'Orientation'));
+ clean('Placement',placement);clean('Size',size);clean('Orientation',orientation);
+ ['diameter','solidThickness','hubScale','hubDetail','webWidth','customRelativeScale','customConstantSize','customExportMode'].forEach(id=>conceal(control(id)));
+ const sm=document.getElementById('torusSizeMode'),constant=sm?.value==='constant';reveal(control('torusSizeMode'));if(constant){conceal(control('torusRingScale'));conceal(control('torusTubeScale'));reveal(control('torusConstantRing'));reveal(control('torusConstantTube'))}else{reveal(control('torusRingScale'));reveal(control('torusTubeScale'));conceal(control('torusConstantRing'));conceal(control('torusConstantTube'))}
+ ['Placement','Size','Orientation'].forEach(n=>{const s=section(n);if(s)reveal(s)});nav(['General','Symmetry','Placement','Size','Orientation','Geometry / Quality']);
+}
+function applyCustom(){
+ const placement=['customPlacementMode','customDensity','customNormalMode','customNormalOffset'];
+ const size=['customSizeMode','customRelativeScale','customConstantSize'];
+ const orientation=['customAxis','customTiltX','customTiltY'];
+ const quality=['customRepairMaster','customFillHoles','customStrictManifold','customWeldTolerance'];
+ placement.forEach(id=>move(id,'Placement'));size.forEach(id=>move(id,'Size'));orientation.forEach(id=>move(id,'Orientation'));quality.forEach(id=>move(id,'Geometry / Quality'));
+ clean('Placement',placement);clean('Size',size);clean('Orientation',orientation);clean('Geometry / Quality',quality);
+ ['angle','quadAngle','minLength','solidDirection','diameter','sides','hubScale','hubDetail','webWidth','solidThickness','torusSizeMode','torusRingScale','torusTubeScale','torusConstantRing','torusConstantTube','torusPlacementMode','torusDensity','torusNormalMode','torusNormalOffset','torusTiltX','torusTiltY','torusAxis','customExportMode'].forEach(id=>conceal(control(id)));
+ const gen=section('General');if(gen)conceal(gen);
+ const sm=document.getElementById('customSizeMode'),constant=sm?.value==='constant';const rl=document.querySelector('label[for="customRelativeScale"]');if(rl)rl.textContent='Scale';const cl=document.querySelector('label[for="customConstantSize"]');if(cl)cl.textContent='Constant object size';if(constant){conceal(control('customRelativeScale'));reveal(control('customConstantSize'))}else{reveal(control('customRelativeScale'));conceal(control('customConstantSize'))}
+ ['Placement','Size','Orientation','Geometry / Quality'].forEach(n=>{const s=section(n);if(s)reveal(s)});nav(['Placement','Size','Orientation','Geometry / Quality']);
+}
+function refresh(){removeLegacyButtons();const m=mode();if(m==='torus')applyTorus();else if(m==='custom')applyCustom();stamp()}
+// Nomad-friendly imported-instance default: +Y -> normal. Apply only once per page load so user changes are respected.
+const ca=document.getElementById('customAxis');if(ca&&!ca.dataset.mlr24Defaulted){ca.value='py';ca.dataset.mlr24Defaulted='1'}
+function settle(){refresh();requestAnimationFrame(refresh);setTimeout(refresh,40);setTimeout(refresh,120)}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',settle);
+document.getElementById('torusSizeMode')?.addEventListener('change',()=>setTimeout(refresh,0));
+document.getElementById('customSizeMode')?.addEventListener('change',()=>setTimeout(refresh,0));
+for(const id of ['generateBtn','generate','buildBtn'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(refresh,120));
+requestAnimationFrame(settle);
+})();
