@@ -1,0 +1,31 @@
+
+// v0.9.0-wip.12 — compact inspector navigation / accordion
+(function(){
+const VERSION='0.9.0-wip.12';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const sections=[...panel.querySelectorAll('.mlr10-section')];if(!sections.length)return;
+const style=document.createElement('style');style.textContent=`
+.mlr12-head{position:sticky;top:0;z-index:30;margin:0 0 7px;padding:7px;background:rgba(25,28,34,.97);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.09);border-radius:10px}.mlr12-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 1px 6px;font-size:11px;color:#aeb7c5}.mlr12-title strong{color:#f3f5f8;font-size:12px}.mlr12-nav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}.mlr12-nav::-webkit-scrollbar{display:none}.mlr12-nav button{flex:0 0 auto;min-height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.1);border-radius:7px;background:#292e38;color:#cdd3dd;font:600 10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mlr12-nav button.is-active{background:#496da8;color:#fff;border-color:#6485bc}.mlr12-section-hidden{display:none!important}.mlr12-accordion .mlr10-section:not([open])>.mlr10-body{display:none!important}.mlr12-accordion .mlr10-section>summary{position:relative}.mlr12-mode{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}.mlr12-compact-toggle{border:0;background:transparent;color:#aeb7c5;padding:0;font:600 10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+@media(max-width:759px),(orientation:portrait){.mlr12-head{position:relative}.mlr12-nav button{min-height:34px}}
+`;document.head.appendChild(style);panel.classList.add('mlr12-accordion');
+const head=document.createElement('div');head.className='mlr12-head';head.innerHTML=`<div class="mlr12-title"><strong>INSPECTOR</strong><span class="mlr12-mode"></span><button type="button" class="mlr12-compact-toggle">EXPAND ALL</button></div><div class="mlr12-nav"></div>`;
+const firstSection=sections[0];firstSection.parentNode.insertBefore(head,firstSection);const nav=head.querySelector('.mlr12-nav'),modeLabel=head.querySelector('.mlr12-mode'),toggle=head.querySelector('.mlr12-compact-toggle');
+const names={'General':'General','Symmetry':'Symmetry','Placement':'Placement','Size':'Size','Orientation':'Orientation','Geometry / Quality':'Quality'};let accordion=true;
+function visibleSection(sec){const st=getComputedStyle(sec);return st.display!=='none'&&!sec.classList.contains('mlr10-hidden')&&!sec.classList.contains('mlr11-hidden')&&!sec.classList.contains('mlr12-section-hidden')}
+function sectionName(sec){return sec.dataset.mlr10||sec.querySelector('summary')?.textContent?.trim()||'Section'}
+function modeText(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');return(e?.selectedOptions?.[0]?.textContent||e?.value||'').trim()}
+function openSection(sec,scroll=true){if(!sec||!visibleSection(sec))return;if(accordion)for(const s of sections)if(s!==sec&&visibleSection(s))s.open=false;sec.open=true;syncNav();if(scroll){const y=sec.getBoundingClientRect().top-panel.getBoundingClientRect().top+panel.scrollTop-head.offsetHeight-6;try{panel.scrollTo({top:Math.max(0,y),behavior:'smooth'})}catch{panel.scrollTop=Math.max(0,y)}}}
+function syncNav(){modeLabel.textContent=modeText();const visible=sections.filter(visibleSection);nav.innerHTML='';for(const sec of visible){const name=sectionName(sec);const b=document.createElement('button');b.type='button';b.textContent=names[name]||name;b.classList.toggle('is-active',sec.open);b.onclick=()=>openSection(sec,true);nav.appendChild(b)}toggle.textContent=accordion?'EXPAND ALL':'COMPACT';}
+function enforce(){const visible=sections.filter(visibleSection);if(!visible.length){syncNav();return}if(accordion){let opened=visible.filter(s=>s.open);if(opened.length>1){const keep=opened[0];opened.slice(1).forEach(s=>s.open=false)}else if(!opened.length){const preferred=visible.find(s=>sectionName(s)==='Placement')||visible.find(s=>sectionName(s)==='Size')||visible[0];preferred.open=true}}syncNav()}
+for(const sec of sections){sec.addEventListener('toggle',()=>{if(!sec.open||!accordion)return;for(const other of sections)if(other!==sec&&visibleSection(other))other.open=false;syncNav()})}
+toggle.onclick=()=>{accordion=!accordion;if(!accordion){sections.filter(visibleSection).forEach(s=>s.open=true)}else enforce();syncNav()};
+const observer=new MutationObserver(()=>requestAnimationFrame(enforce));sections.forEach(s=>observer.observe(s,{attributes:true,attributeFilter:['class','style','open']}));
+for(const id of ['replaceMode','mlrMode','torusSizeMode','customSizeMode','torusPlacementMode','customPlacementMode'])document.getElementById(id)?.addEventListener('change',()=>requestAnimationFrame(enforce));
+// Keep compact inline one-control sections from WIP11 out of the navigator unless they are the only relevant section.
+for(const sec of sections){if(sec.classList.contains('mlr11-inline'))sec.classList.remove('mlr11-inline')}
+enforce();
+const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}
+})();
