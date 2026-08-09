@@ -1,0 +1,42 @@
+
+// MeshUtilz v0.9.1-wip.2 — authoritative orientation smoothing UI
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.1-wip.2';
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const OLD=['hidden','mlr24-hidden','mlr21-hidden','mlr20-hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden','muz-orient-hidden'];
+function mode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();if(/import|custom|instance object/.test(s))return'custom';if(/torus/.test(s))return'torus';return'other'}
+function control(id){const e=document.getElementById(id);return e?.closest('.control')||null}
+function reveal(el){if(!el)return;OLD.forEach(c=>el.classList.remove(c));el.style.removeProperty('display')}
+function hide(el){if(!el)return;el.classList.add('muz-orient-hidden');el.style.setProperty('display','none','important')}
+function section(){let s=panel.querySelector('.mlr10-section[data-mlr10="Orientation"]');if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10='Orientation';s.innerHTML='<summary>Orientation</summary><div class="mlr10-body"></div>';panel.appendChild(s)}reveal(s);return s}
+function body(){const s=section();return s.querySelector('.mlr10-body')||s}
+function move(id){const c=control(id);if(!c)return;reveal(c);body().appendChild(c)}
+function applyBranch(prefix){
+ const field=document.getElementById(prefix+'OrientationField');const smooth=control(prefix+'OrientationSmooth');if(!field||!smooth)return;
+ reveal(control(prefix+'OrientationField'));
+ if(field.value==='smooth')reveal(smooth);else hide(smooth);
+}
+function clean(){
+ const m=mode();
+ const torus=['torusAxis','torusTiltX','torusTiltY','torusOrientationField','torusOrientationSmooth'];
+ const custom=['customAxis','customTiltX','customTiltY','customOrientationField','customOrientationSmooth'];
+ const allowed=m==='torus'?torus:m==='custom'?custom:[];
+ if(!allowed.length)return;
+ allowed.forEach(move);
+ for(const c of [...body().querySelectorAll('.control')]){
+   const own=allowed.some(id=>c.querySelector?.('#'+id));if(!own)hide(c);
+ }
+ applyBranch(m==='torus'?'torus':'custom');
+ const s=section();s.open=true;
+}
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function refresh(){clean();stamp()}
+function settle(){refresh();requestAnimationFrame(refresh);setTimeout(refresh,50);setTimeout(refresh,160)}
+for(const p of ['torus','custom']){
+ document.getElementById(p+'OrientationField')?.addEventListener('change',()=>{applyBranch(p);stamp()});
+ const r=document.getElementById(p+'OrientationSmooth'),o=document.getElementById(p+'OrientationSmoothOut');r?.addEventListener('input',()=>{if(o)o.value=`${r.value}%`;stamp()});
+}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',settle);
+for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(stamp,150));
+requestAnimationFrame(settle);
+})();
