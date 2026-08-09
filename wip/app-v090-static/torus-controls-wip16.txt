@@ -1,0 +1,31 @@
+
+// v0.9.0-wip.16 — restore Torus placement/orientation controls after legacy sweep
+(function(){
+const VERSION='0.9.0-wip.16';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const HIDE=['mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden'];
+function mode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();return /torus/.test(s)?'torus':'other'}
+function control(id){const e=document.getElementById(id);return e?.closest('.control')||e?.closest('label.check')||null}
+function unhide(el){if(!el)return;HIDE.forEach(c=>el.classList.remove(c));el.style.removeProperty('display')}
+function section(name){return panel.querySelector(`.mlr10-section[data-mlr10="${name}"]`)}
+function ensureSection(name,open=true){let s=section(name);if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10=name;s.innerHTML=`<summary>${name}</summary><div class="mlr10-body"></div>`;panel.appendChild(s)}s.open=open;unhide(s);return s}
+function moveControl(id,target){const c=control(id);if(!c)return;const s=ensureSection(target,true),body=s.querySelector('.mlr10-body')||s;unhide(c);body.appendChild(c)}
+function restoreTorus(){if(mode()!=='torus')return;
+ // Placement family
+ ['torusPlacementMode','torusDensity','torusNormalMode','torusNormalOffset'].forEach(id=>moveControl(id,'Placement'));
+ // Orientation family: axis contains +X/+Y/+Z/-X/-Y/-Z alignment choices.
+ ['torusAxis','torusTiltX','torusTiltY'].forEach(id=>moveControl(id,'Orientation'));
+ // Ensure navigator exposes restored sections.
+ for(const name of ['Placement','Orientation']){const s=section(name);if(!s)continue;unhide(s);document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const target=b.dataset.mlr12Target||b.dataset.target||'';if(target===name)unhide(b)})}
+ // WIP12 accordion: default Placement open after switching into Torus.
+ const placement=section('Placement');if(placement)placement.open=true;
+ const orientation=section('Orientation');if(orientation&&placement)orientation.open=false;
+}
+function removeLegacyImportModel(){for(const el of document.querySelectorAll('button,a,label,.file-button')){if(el.closest('.mlr-filepop'))continue;const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t==='import model'||t==='import model…'){el.classList.add('mlr15-hidden');el.style.setProperty('display','none','important')}}}
+function refresh(){removeLegacyImportModel();restoreTorus();const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>requestAnimationFrame(refresh));
+requestAnimationFrame(refresh);
+})();
