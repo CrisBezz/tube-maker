@@ -1,27 +1,41 @@
 
-// v0.9.0-wip.10 — compact mode parameter grouping
+// v0.9.0-wip.10 — safe compact mode parameter grouping
 (function(){
-const VERSION='0.9.0-wip.10';document.title=`Mesh Line Replacer v${VERSION}`;const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
-const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
-const style=document.createElement('style');style.textContent=`.mlr10-section{border:1px solid rgba(255,255,255,.09);border-radius:10px;margin:7px 0;background:rgba(255,255,255,.025);overflow:hidden}.mlr10-section>summary{list-style:none;cursor:pointer;padding:8px 10px;font-weight:650;font-size:12px;letter-spacing:.02em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between}.mlr10-section>summary::-webkit-details-marker{display:none}.mlr10-section>summary:after{content:'›';opacity:.55}.mlr10-section[open]>summary:after{transform:rotate(90deg)}.mlr10-body{padding:1px 8px 8px}.mlr10-hidden{display:none!important}.mlr10-pair{display:grid;grid-template-columns:1fr 1fr;gap:5px 8px}.mlr10-pair>.control{min-width:0}.mlr10-section .control{margin-top:5px!important;margin-bottom:5px!important}.mlr10-object-info{font-size:11px;opacity:.72;padding:1px 2px 6px}@media(max-width:759px),(orientation:portrait){.mlr10-pair{display:block}}`;document.head.appendChild(style);
-function controlOf(e){return e?.closest('.control')||e?.closest('label.check')||e?.parentElement}function text(c){return(c?.textContent||'').replace(/\s+/g,' ').trim().toLowerCase()}function idset(c){return[...c.querySelectorAll?.('[id]')||[]].map(e=>e.id).join(' ').toLowerCase()}function hidden(c){return c.classList.contains('mlr-wip6-hidden')||c.classList.contains('mlr-consolidated-hidden')||c.classList.contains('mlr-mode-hidden')||c.classList.contains('mlr-context-hidden')||c.classList.contains('mlr10-hidden')}
-// Unwrap the earlier experimental section hierarchy. WIP10 becomes the sole parameter grouping layer.
-for(const d of [...panel.querySelectorAll('.mlr-section,.mlr-advanced')]){const body=d.querySelector('.mlr-section-body')||d;for(const child of [...body.children]){if(child.tagName==='SUMMARY')continue;if(child.classList?.contains('mlr-two-col')){for(const x of [...child.children])panel.insertBefore(x,d)}else panel.insertBefore(child,d)}d.remove()}
-for(const row of [...panel.querySelectorAll('.mlr-two-col')]){for(const c of [...row.children])panel.insertBefore(c,row);row.remove()}
-// View, file, export and action controls never belong in the parameter panel.
-const forbidden=/view mode|base view|wireframe overlay|face normals|vertex normals|normal length|view target|open source|import master|import instance|save project|load project|quick save|quick load|project info|about|export glb|instance export|^export$|generate/i;
-for(const c of [...panel.querySelectorAll('.control,label.check,.actions,.toolbar-row')])if(forbidden.test(text(c)))c.classList.add('mlr10-hidden');
-function category(c){const t=text(c),ids=idset(c);if(/symmetr/.test(t+ids))return'Symmetry';if(/density|placement|face centre|face center|shared.*node|shared.*vertex|normal offset|normal direction|force outward/.test(t+ids))return'Placement';if(/size mode|relative|constant|scale|major radius|tube radius|ring size|tube size|radius|diameter|thickness|inset width|width/.test(t+ids))return'Size';if(/tilt|orientation|alignment|rotation|rotate|axis/.test(t+ids))return'Orientation';if(/segment|sides|bevel|repair|weld|manifold|tolerance|watertight|flat shading|quality|junction|mitre|miter/.test(t+ids))return'Geometry / Quality';return'General'}
-const controls=[...panel.querySelectorAll(':scope > .control,:scope > label.check')].filter(c=>!hidden(c));const groups=new Map();for(const c of controls){const g=category(c);if(!groups.has(g))groups.set(g,[]);groups.get(g).push(c)}
-const order=['General','Symmetry','Placement','Size','Orientation','Geometry / Quality'];for(const name of order){const items=groups.get(name);if(!items?.length)continue;const d=document.createElement('details');d.className='mlr10-section';d.dataset.mlr10=name;d.open=name!=='Geometry / Quality';const s=document.createElement('summary');s.textContent=name;const b=document.createElement('div');b.className='mlr10-body';d.append(s,b);items.forEach(c=>b.appendChild(c));panel.appendChild(d)}
-function pair(section,tests){const body=panel.querySelector(`.mlr10-section[data-mlr10="${section}"] .mlr10-body`);if(!body)return;for(const [ra,rb] of tests){const cs=[...body.children].filter(x=>x.classList?.contains('control')&&!x.closest('.mlr10-pair'));const a=cs.find(c=>ra.test(text(c)+idset(c))),b=cs.find(c=>rb.test(text(c)+idset(c))&&c!==a);if(a&&b){const row=document.createElement('div');row.className='mlr10-pair';body.insertBefore(row,a);row.append(a,b)}}}
-pair('Orientation',[[/tilt x|tiltx/,/tilt y|tilty/]]);pair('Size',[[/major radius|major.*size|major.*scale/,/tube radius|tube.*size|tube.*scale/],[/ring segment|ring.*segment/,/tube segment|tube.*segment/]]);pair('Geometry / Quality',[[/tolerance/,/manifold|watertight/]]);
-function activeMode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');return((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase()}
-function refresh(){const mode=activeMode();for(const d of panel.querySelectorAll('.mlr10-section')){let visible=0;for(const c of d.querySelectorAll('.control,label.check')){const ids=idset(c),t=text(c);let hide=false;if((ids.includes('torus')||t.includes('torus'))&&!mode.includes('torus'))hide=true;if((ids.includes('custom')||t.includes('imported instance')||t.includes('master object'))&&!(mode.includes('custom')||mode.includes('import')))hide=true;c.classList.toggle('mlr10-hidden',hide);if(!hide)visible++}d.classList.toggle('mlr10-hidden',visible===0)}
-for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',refresh);refresh();
-// Keep existing size-mode context behaviour, but ensure its revealed controls are not trapped by WIP10.
-function size(prefix){const mode=document.getElementById(prefix+'SizeMode');if(!mode)return;const constant=mode.value==='constant';for(const c of panel.querySelectorAll('.control')){const ids=idset(c);if(!ids.includes(prefix))continue;const isConst=/constant/.test(ids+text(c)),isRel=/relative|scale/.test(ids+text(c))&&!isConst;if(isConst)c.classList.toggle('mlr10-hidden',!constant);else if(isRel)c.classList.toggle('mlr10-hidden',constant)}refresh()}
-for(const p of ['torus','custom']){document.getElementById(p+'SizeMode')?.addEventListener('change',()=>size(p));}
-// Rename old status footer only; do not create another footer.
-for(const el of document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')){const spans=el.querySelectorAll('span');if(spans.length)spans[spans.length-1].textContent=`v${VERSION}`}
+const VERSION='0.9.0-wip.10';
+try{
+  document.title=`Mesh Line Replacer v${VERSION}`;
+  const vv=document.querySelector('.version'); if(vv) vv.textContent=`v${VERSION}`;
+  const av=document.querySelector('.about-version'); if(av) av.textContent=`Version ${VERSION}`;
+  const panel=document.querySelector('.panel,.sidebar,.controls'); if(!panel) return;
+  const style=document.createElement('style');
+  style.textContent=`.mlr10-section{border:1px solid rgba(255,255,255,.09);border-radius:10px;margin:7px 0;background:rgba(255,255,255,.025);overflow:hidden}.mlr10-section>summary{list-style:none;cursor:pointer;padding:8px 10px;font-weight:650;font-size:12px;letter-spacing:.02em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between}.mlr10-section>summary::-webkit-details-marker{display:none}.mlr10-section>summary:after{content:'›';opacity:.55}.mlr10-section[open]>summary:after{transform:rotate(90deg)}.mlr10-body{padding:1px 8px 8px}.mlr10-hidden{display:none!important}.mlr10-pair{display:grid;grid-template-columns:1fr 1fr;gap:5px 8px}.mlr10-pair>.control{min-width:0}.mlr10-section .control{margin:5px 0!important}@media(max-width:759px),(orientation:portrait){.mlr10-pair{display:block}}`;
+  document.head.appendChild(style);
+  const txt=c=>(c?.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+  const ids=c=>[...(c?.querySelectorAll?.('[id]')||[])].map(e=>e.id).join(' ').toLowerCase();
+  const oldSections=[...panel.querySelectorAll('.mlr-section')];
+  const candidates=[];
+  for(const sec of oldSections){
+    for(const c of sec.querySelectorAll('.control,label.check')) if(!c.closest('.mlr-pop,.mlr-filepop,.mlr-viewpop2')) candidates.push(c);
+  }
+  // Add any direct controls not already captured.
+  for(const c of panel.querySelectorAll(':scope > .control,:scope > label.check')) if(!candidates.includes(c)) candidates.push(c);
+  const forbidden=/view mode|base view|wireframe overlay|face normals|vertex normals|normal length|view target|open source|import master|import instance|save project|load project|quick save|quick load|project info|about|export glb|instance export|^export$|generate/i;
+  function category(c){const t=txt(c)+' '+ids(c);if(/symmetr/.test(t))return'Symmetry';if(/density|placement|face centre|face center|shared.*node|shared.*vertex|normal offset|normal direction|force outward/.test(t))return'Placement';if(/size mode|relative|constant|scale|major radius|tube radius|ring size|tube size|radius|diameter|thickness|inset width|width/.test(t))return'Size';if(/tilt|orientation|alignment|rotation|rotate|axis/.test(t))return'Orientation';if(/segment|sides|bevel|repair|weld|manifold|tolerance|watertight|flat shading|quality|junction|mitre|miter/.test(t))return'Geometry / Quality';return'General'}
+  const groups=new Map();
+  for(const c of candidates){if(forbidden.test(txt(c))) {c.classList.add('mlr10-hidden'); continue;} const g=category(c); if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(c);}
+  // Remove any prior WIP10 shell only. Never unwrap legacy sections.
+  for(const d of [...panel.querySelectorAll(':scope > .mlr10-section')]) d.remove();
+  const order=['General','Symmetry','Placement','Size','Orientation','Geometry / Quality'];
+  for(const name of order){const items=groups.get(name);if(!items?.length) continue;const d=document.createElement('details');d.className='mlr10-section';d.dataset.mlr10=name;d.open=name!=='Geometry / Quality';const s=document.createElement('summary');s.textContent=name;const b=document.createElement('div');b.className='mlr10-body';d.append(s,b);for(const c of items)b.appendChild(c);panel.appendChild(d);}
+  // Hide only the now-empty legacy section wrappers.
+  for(const sec of oldSections){const remaining=[...sec.querySelectorAll('.control,label.check')].filter(c=>!c.classList.contains('mlr10-hidden'));if(!remaining.length)sec.classList.add('mlr10-hidden');}
+  function pair(section,ra,rb){const body=panel.querySelector(`.mlr10-section[data-mlr10="${section}"] .mlr10-body`);if(!body)return;const cs=[...body.children].filter(x=>x.classList?.contains('control'));const a=cs.find(c=>ra.test(txt(c)+' '+ids(c))),b=cs.find(c=>rb.test(txt(c)+' '+ids(c))&&c!==a);if(a&&b&&a.parentElement===body&&b.parentElement===body){const row=document.createElement('div');row.className='mlr10-pair';body.insertBefore(row,a);row.append(a,b);}}
+  pair('Orientation',/tilt x|tiltx/,/tilt y|tilty/);
+  pair('Size',/major radius|major.*size|major.*scale/,/tube radius|tube.*size|tube.*scale/);
+  pair('Geometry / Quality',/tolerance/,/manifold|watertight/);
+  function refreshSections(){for(const d of panel.querySelectorAll(':scope > .mlr10-section')){const controls=[...d.querySelectorAll('.control,label.check')];const visible=controls.some(c=>getComputedStyle(c).display!=='none'&&!c.classList.contains('mlr10-hidden')&&!c.classList.contains('mlr-wip6-hidden')&&!c.classList.contains('mlr-consolidated-hidden')&&!c.classList.contains('mlr-mode-hidden')&&!c.classList.contains('mlr-context-hidden'));d.classList.toggle('mlr10-hidden',!visible);}}
+  for(const e of panel.querySelectorAll('select,input[type=radio],input[type=checkbox]')) e.addEventListener('change',()=>setTimeout(refreshSections,0));
+  setTimeout(refreshSections,0);
+  for(const el of document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')){const spans=el.querySelectorAll('span');if(spans.length)spans[spans.length-1].textContent=`v${VERSION}`;}
+}catch(err){console.error('WIP10 grouping skipped safely:',err);}
 })();
