@@ -1,0 +1,12 @@
+{
+  "name":"MeshUtilz",
+  "short_name":"MeshUtilz",
+  "version":"0.9.0-rc1",
+  "description":"Mesh utilities for procedural geometry, surface webs, torus placement and imported mesh instancing.",
+  "start_url":"./index.html",
+  "scope":"./",
+  "display":"standalone",
+  "background_color":"#111318",
+  "theme_color":"#191c22",
+  "orientation":"any"
+}
