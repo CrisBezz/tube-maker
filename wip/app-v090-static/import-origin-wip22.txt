@@ -1,0 +1,69 @@
+
+// v0.9.0-wip.22 — preserve imported master object's authored origin/pivot
+(function(){
+const VERSION='0.9.0-wip.22';
+
+async function sourceMasterBoundsCentre(file){
+  const ext=file.name.split('.').pop()?.toLowerCase();
+  let root=null;
+  let url=null;
+  try{
+    if(ext==='obj'){
+      root=new OBJLoader().parse(await file.text());
+    }else{
+      url=URL.createObjectURL(file);
+      if(ext==='glb'||ext==='gltf') root=(await new GLTFLoader().loadAsync(url)).scene;
+      else if(ext==='stl') root=new THREE.Mesh(await new STLLoader().loadAsync(url),new THREE.MeshStandardMaterial());
+      else return null;
+    }
+    root.updateMatrixWorld(true);
+    const bounds=new THREE.Box3();
+    let found=false;
+    root.traverse(obj=>{
+      if(!obj.isMesh||!obj.geometry?.attributes?.position)return;
+      const pos=obj.geometry.getAttribute('position');
+      for(let i=0;i<pos.count;i++){
+        bounds.expandByPoint(new THREE.Vector3(pos.getX(i),pos.getY(i),pos.getZ(i)).applyMatrix4(obj.matrixWorld));
+        found=true;
+      }
+    });
+    return found&&!bounds.isEmpty()?bounds.getCenter(new THREE.Vector3()):null;
+  }finally{
+    if(url)URL.revokeObjectURL(url);
+    if(root){
+      root.traverse(obj=>{
+        obj.geometry?.dispose?.();
+        const m=obj.material;
+        if(Array.isArray(m))m.forEach(x=>x?.dispose?.()); else m?.dispose?.();
+      });
+    }
+  }
+}
+
+// The legacy importer recentres repaired geometry around its bounding-box centre.
+// Wrap it and restore that exact centre afterwards so local (0,0,0) remains the authored pivot.
+const legacyLoadCustomMasterFile=loadCustomMasterFile;
+loadCustomMasterFile=async function(file){
+  let centre=null;
+  try{ centre=await sourceMasterBoundsCentre(file); }catch(err){ console.warn('Could not inspect imported master origin; using legacy centring.',err); }
+  await legacyLoadCustomMasterFile(file);
+  if(centre&&customMasterRecords?.length){
+    for(const rec of customMasterRecords){
+      rec.geometry.translate(centre.x,centre.y,centre.z);
+      rec.geometry.computeBoundingBox();
+      rec.geometry.computeBoundingSphere();
+    }
+    if(customMasterStatus) customMasterStatus.textContent += ' • source origin preserved';
+  }
+};
+
+function stamp(){
+  document.title=`Mesh Line Replacer v${VERSION}`;
+  document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);
+  const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+  const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];
+  bars.slice(1).forEach(x=>x.remove());
+  if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`;}
+}
+requestAnimationFrame(stamp);
+})();
