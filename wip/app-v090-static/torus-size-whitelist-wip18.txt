@@ -1,0 +1,36 @@
+
+// v0.9.0-wip.18 — strict Torus inspector ownership, especially SIZE
+(function(){
+const VERSION='0.9.0-wip.18';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const style=document.createElement('style');style.textContent='.mlr18-hidden{display:none!important}';document.head.appendChild(style);
+const OLD_HIDE=['mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden'];
+function unhide(el){if(!el)return;OLD_HIDE.forEach(c=>el.classList.remove(c));el.classList.remove('mlr18-hidden');el.style.removeProperty('display')}
+function hide(el){if(!el)return;el.classList.add('mlr18-hidden');el.style.setProperty('display','none','important')}
+function mode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();return /torus/.test(s)?'torus':'other'}
+function ctl(id){const e=document.getElementById(id);return e?.closest('.control')||e?.closest('label.check')||null}
+function section(name){return panel.querySelector(`.mlr10-section[data-mlr10="${name}"]`)}
+function ensureSize(){let s=section('Size');if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10='Size';s.innerHTML='<summary>Size</summary><div class="mlr10-body"></div>';panel.appendChild(s)}unhide(s);return s}
+const TORUS_SIZE_IDS=['torusSizeMode','torusRingScale','torusTubeScale','torusConstantRing','torusConstantTube'];
+function containsAllowed(c){return TORUS_SIZE_IDS.some(id=>c.querySelector?.('#'+id)||c.id===id)}
+function rebuildTorusSize(){if(mode()!=='torus')return;const s=ensureSize(),body=s.querySelector('.mlr10-body')||s;
+ // First remove every inherited/non-Torus control from the Size group.
+ for(const c of [...body.querySelectorAll('.control,label.check')])if(!containsAllowed(c))hide(c);
+ // Then move the five authoritative Torus size controls into Size and make them eligible for display.
+ for(const id of TORUS_SIZE_IDS){const c=ctl(id);if(!c)continue;unhide(c);body.appendChild(c)}
+ // Explicitly suppress known foreign controls anywhere in Torus inspector.
+ ['diameter','solidThickness','hubScale','hubDetail','webWidth','customRelativeScale','customConstantSize'].forEach(id=>hide(ctl(id)));
+ const sm=document.getElementById('torusSizeMode');if(sm){const constant=sm.value==='constant';['torusRingScale','torusTubeScale'].forEach(id=>constant?hide(ctl(id)):unhide(ctl(id)));['torusConstantRing','torusConstantTube'].forEach(id=>constant?unhide(ctl(id)):hide(ctl(id)))}
+ s.open=true;
+ // Keep the Size navigator item available.
+ document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const target=b.dataset.mlr12Target||b.dataset.target||'';if(target==='Size')unhide(b)});
+}
+function removeLegacyImport(){for(const el of document.querySelectorAll('button,a,label,.file-button')){if(el.closest('.mlr-filepop'))continue;const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t==='import model'||t==='import model…')hide(el)}}
+function stamp(){const all=[...document.querySelectorAll('.version')];all.forEach(x=>x.textContent=`v${VERSION}`);const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function refresh(){removeLegacyImport();rebuildTorusSize();stamp()}
+document.getElementById('torusSizeMode')?.addEventListener('change',()=>requestAnimationFrame(refresh));for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>requestAnimationFrame(refresh));
+requestAnimationFrame(refresh);
+})();
