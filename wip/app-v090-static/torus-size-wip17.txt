@@ -1,0 +1,23 @@
+
+// v0.9.0-wip.17 — restore Torus size-mode controls in cleaned inspector
+(function(){
+const VERSION='0.9.0-wip.17';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const HIDE=['mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden'];
+function currentMode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();return /torus/.test(s)?'torus':'other'}
+function ctl(id){const e=document.getElementById(id);return e?.closest('.control')||e?.closest('label.check')||null}
+function unhide(el){if(!el)return;HIDE.forEach(c=>el.classList.remove(c));el.style.removeProperty('display')}
+function hide(el){if(!el)return;el.classList.add('mlr17-hidden');el.style.setProperty('display','none','important')}
+function show(el){if(!el)return;el.classList.remove('mlr17-hidden');unhide(el)}
+function section(name){return panel.querySelector(`.mlr10-section[data-mlr10="${name}"]`)}
+function ensureSection(name){let s=section(name);if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10=name;s.innerHTML=`<summary>${name}</summary><div class="mlr10-body"></div>`;panel.appendChild(s)}unhide(s);return s}
+function move(id){const c=ctl(id);if(!c)return null;const s=ensureSection('Size'),body=s.querySelector('.mlr10-body')||s;unhide(c);body.appendChild(c);return c}
+function refreshSizeBranch(){if(currentMode()!=='torus')return;const mode=document.getElementById('torusSizeMode');if(!mode)return;const constant=mode.value==='constant';const relative=['torusRingScale','torusTubeScale'];const absolute=['torusConstantRing','torusConstantTube'];relative.forEach(id=>constant?hide(ctl(id)):show(ctl(id)));absolute.forEach(id=>constant?show(ctl(id)):hide(ctl(id)));const s=section('Size');if(s){unhide(s);s.open=true}document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const target=b.dataset.mlr12Target||b.dataset.target||'';if(target==='Size')unhide(b)})}
+function restore(){if(currentMode()!=='torus')return;['torusSizeMode','torusRingScale','torusTubeScale','torusConstantRing','torusConstantTube'].forEach(move);refreshSizeBranch()}
+const sm=document.getElementById('torusSizeMode');sm?.addEventListener('change',()=>requestAnimationFrame(refreshSizeBranch));
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>requestAnimationFrame(restore));
+requestAnimationFrame(()=>{restore();const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}});
+})();
