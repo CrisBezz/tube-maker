@@ -1,0 +1,11 @@
+
+// v0.9.0-wip.23 — Nomad-friendly imported-instance default axis
+(function(){
+const VERSION='0.9.0-wip.23';
+const axis=document.getElementById('customAxis');
+if(axis){axis.value='py';const opt=[...axis.options].find(o=>o.value==='py');if(opt)opt.selected=true;}
+document.title=`Mesh Line Replacer v${VERSION}`;
+document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}
+})();
