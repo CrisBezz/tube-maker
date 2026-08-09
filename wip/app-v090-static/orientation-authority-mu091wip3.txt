@@ -1,0 +1,47 @@
+
+// MeshUtilz v0.9.1-wip.3 — final Orientation ownership for Torus + Imported Instance
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.1-wip.3';
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const HIDE=['hidden','mlr24-hidden','mlr21-hidden','mlr20-hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden','muz-orient-hidden'];
+function activeMode(){const native=document.getElementById('replaceMode');const compact=document.getElementById('mlrMode');const e=compact||native;const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();if(/import|custom|instance object/.test(s))return'custom';if(/torus/.test(s))return'torus';return'other'}
+function ctl(id){const e=document.getElementById(id);return e?.closest('.control')||e?.closest('label.check')||null}
+function show(el){if(!el)return;HIDE.forEach(c=>el.classList.remove(c));el.classList.remove('mu913-hidden');el.style.removeProperty('display')}
+function hide(el){if(!el)return;el.classList.add('mu913-hidden');el.style.setProperty('display','none','important')}
+function orientationSection(){let s=panel.querySelector('.mlr10-section[data-mlr10="Orientation"]');if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10='Orientation';s.innerHTML='<summary>Orientation</summary><div class="mlr10-body"></div>';panel.appendChild(s)}show(s);return s}
+function body(){const s=orientationSection();return s.querySelector('.mlr10-body')||s}
+function ensureControl(prefix){
+ let field=document.getElementById(prefix+'OrientationField');
+ if(!field){const wrap=document.createElement('div');wrap.className='control muz-orient-control';wrap.dataset.muzMode=prefix==='torus'?'torus':'custom';wrap.innerHTML=`<label for="${prefix}OrientationField">Orientation field</label><select id="${prefix}OrientationField"><option value="local" selected>Local</option><option value="smooth">Neighbour smoothed</option></select>`;body().appendChild(wrap);field=wrap.querySelector('select')}
+ let range=document.getElementById(prefix+'OrientationSmooth');
+ if(!range){const wrap=document.createElement('div');wrap.className='control muz-orient-control';wrap.dataset.muzMode=prefix==='torus'?'torus':'custom';wrap.innerHTML=`<label for="${prefix}OrientationSmooth">Smoothing</label><output id="${prefix}OrientationSmoothOut">60%</output><input id="${prefix}OrientationSmooth" type="range" min="0" max="100" value="60" step="5" />`;body().appendChild(wrap);range=wrap.querySelector('input')}
+ if(!field.dataset.mu913Bound){field.addEventListener('change',()=>{applyBranch(prefix);stamp()});field.dataset.mu913Bound='1'}
+ if(range&&!range.dataset.mu913Bound){range.addEventListener('input',()=>{const o=document.getElementById(prefix+'OrientationSmoothOut');if(o)o.value=`${range.value}%`;stamp()});range.dataset.mu913Bound='1'}
+ return {field,range};
+}
+function move(id){const c=ctl(id);if(!c)return;show(c);body().appendChild(c)}
+function applyBranch(prefix){const {field}=ensureControl(prefix);const smooth=ctl(prefix+'OrientationSmooth');show(ctl(prefix+'OrientationField'));if(field?.value==='smooth')show(smooth);else hide(smooth)}
+function apply(){
+ const m=activeMode();
+ const torus=['torusOrientationField','torusOrientationSmooth','torusAxis','torusTiltX','torusTiltY'];
+ const custom=['customOrientationField','customOrientationSmooth','customAxis','customTiltX','customTiltY'];
+ if(m!=='torus'&&m!=='custom'){for(const p of ['torus','custom']){hide(ctl(p+'OrientationField'));hide(ctl(p+'OrientationSmooth'))}stamp();return}
+ const prefix=m==='torus'?'torus':'custom';ensureControl(prefix);
+ const allowed=m==='torus'?torus:custom;
+ // Explicit order in the inspector.
+ allowed.forEach(move);
+ // Hide controls belonging to the other instance mode, plus any legacy Orientation leftovers.
+ const other=m==='torus'?custom:torus;other.forEach(id=>hide(ctl(id)));
+ for(const c of [...body().querySelectorAll('.control,label.check')]){const own=allowed.some(id=>c.querySelector?.('#'+id)||c.id===id);if(!own)hide(c)}
+ applyBranch(prefix);
+ const s=orientationSection();show(s);s.open=true;
+ // Ensure the Orientation navigator remains available.
+ document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const t=b.dataset.mlr12Target||b.dataset.target||'';if(t==='Orientation')show(b)});
+ stamp();
+}
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function settle(){apply();requestAnimationFrame(apply);setTimeout(apply,60);setTimeout(apply,180)}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',settle);
+for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(settle,120));
+requestAnimationFrame(settle);
+})();
