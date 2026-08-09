@@ -1,0 +1,33 @@
+
+// v0.9.0-wip.11 — compact panel refinement over proven WIP10
+(function(){
+const VERSION='0.9.0-wip.11';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const style=document.createElement('style');style.textContent=`
+.mlr11-inline{border:0!important;background:transparent!important;margin:3px 0!important;overflow:visible!important}.mlr11-inline>summary{display:none!important}.mlr11-inline>.mlr10-body{padding:0!important}.mlr11-hidden{display:none!important}.mlr11-section-note{font-size:11px;opacity:.62;margin:0 2px 5px}.mlr10-section>summary{padding:7px 9px!important}.mlr10-body{padding:0 7px 7px!important}.mlr10-section .control{margin:4px 0!important}.mlr11-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 7px}.mlr11-pair>.control{min-width:0}@media(max-width:759px),(orientation:portrait){.mlr11-pair{display:block}}
+`;document.head.appendChild(style);
+function txt(el){return(el?.textContent||'').replace(/\s+/g,' ').trim().toLowerCase()}
+function ids(el){return[...el.querySelectorAll?.('[id]')||[]].map(x=>x.id).join(' ').toLowerCase()}
+function visibleControls(sec){return[...sec.querySelectorAll('.control,label.check')].filter(c=>{const s=getComputedStyle(c);return s.display!=='none'&&!c.classList.contains('mlr10-hidden')&&!c.classList.contains('mlr11-hidden')&&!c.classList.contains('mlr-consolidated-hidden')&&!c.classList.contains('mlr-wip6-hidden')})}
+function pairWithin(sec,tests){const body=sec.querySelector('.mlr10-body');if(!body)return;for(const [aRx,bRx] of tests){const cs=[...body.children].filter(x=>x.classList?.contains('control')&&!x.closest('.mlr11-pair,.mlr10-pair'));const a=cs.find(c=>aRx.test(txt(c)+' '+ids(c)));const b=cs.find(c=>c!==a&&bRx.test(txt(c)+' '+ids(c)));if(a&&b){const row=document.createElement('div');row.className='mlr11-pair';body.insertBefore(row,a);row.append(a,b)}}}
+function collapseSingleControlHeadings(){for(const sec of panel.querySelectorAll('.mlr10-section')){const cs=visibleControls(sec);if(cs.length===1&&sec.dataset.mlr10!=='Geometry / Quality'){sec.classList.add('mlr11-inline');sec.open=true}else sec.classList.remove('mlr11-inline')}}
+function activeModeText(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');return((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase()}
+function context(){const mode=activeModeText();
+ // Hide controls from unrelated generator families.
+ for(const sec of panel.querySelectorAll('.mlr10-section')){for(const c of sec.querySelectorAll('.control,label.check')){const key=ids(c)+' '+txt(c);let hide=false;if(/torus/.test(key)&&!mode.includes('torus'))hide=true;if(/custom|imported instance|master object/.test(key)&&!(mode.includes('custom')||mode.includes('import')))hide=true;c.classList.toggle('mlr11-hidden',hide)}}
+ // Size mode: show only the active branch.
+ for(const prefix of ['torus','custom']){const sm=document.getElementById(prefix+'SizeMode');if(!sm)continue;const constant=sm.value==='constant';for(const c of panel.querySelectorAll('.control')){const key=ids(c)+' '+txt(c);if(!key.includes(prefix))continue;const isConst=/constant/.test(key);const isRel=/relative|scale/.test(key)&&!isConst;if(isConst)c.classList.toggle('mlr11-hidden',!constant);if(isRel)c.classList.toggle('mlr11-hidden',constant)}}
+ // Placement mode: hide node-only helpers unless node placement is active.
+ for(const prefix of ['torus','custom']){const pm=document.getElementById(prefix+'PlacementMode');if(!pm)continue;const node=pm.value==='node';for(const c of panel.querySelectorAll('.control')){const key=ids(c)+' '+txt(c);if(!key.includes(prefix))continue;if(/node normal|averaged normal|shared.*node|shared.*vertex/.test(key)&&!key.includes('placementmode'))c.classList.toggle('mlr11-hidden',!node)}}
+ for(const sec of panel.querySelectorAll('.mlr10-section')){const cs=visibleControls(sec);sec.classList.toggle('mlr11-hidden',cs.length===0);if(sec.dataset.mlr10==='Geometry / Quality')sec.open=false}
+ collapseSingleControlHeadings();
+}
+for(const sec of panel.querySelectorAll('.mlr10-section')){if(sec.dataset.mlr10==='Orientation')pairWithin(sec,[[/tilt x|tiltx/,/tilt y|tilty/],[/rotation x|rotate x/,/rotation y|rotate y/]]);if(sec.dataset.mlr10==='Size')pairWithin(sec,[[/major radius|major.*size|major.*scale/,/tube radius|tube.*size|tube.*scale/],[/ring segments?/,/tube segments?/]]);if(sec.dataset.mlr10==='Geometry / Quality')pairWithin(sec,[[/weld tolerance|tolerance/,/manifold|watertight/],[/bevel/,/thickness|width/]])}
+for(const id of ['replaceMode','mlrMode','torusSizeMode','customSizeMode','torusPlacementMode','customPlacementMode'])document.getElementById(id)?.addEventListener('change',()=>requestAnimationFrame(context));
+context();
+// Keep one footer only and label it with the current WIP.
+const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}
+})();
