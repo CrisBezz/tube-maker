@@ -1,0 +1,37 @@
+
+// v0.9.0-wip.13 — keep faceted shading exclusively in VIEW
+(function(){
+const VERSION='0.9.0-wip.13';
+document.title=`Mesh Line Replacer v${VERSION}`;
+const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;
+const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const panel=document.querySelector('.panel,.sidebar,.controls');
+const viewPop=document.querySelector('.mlr-viewpop2');
+const viewList=viewPop?.querySelector('#mlrViewList');
+const faceted=document.getElementById('viewFacetedShading');
+if(!faceted)return;
+function rowOf(el){return el.closest('.mlr-menurow')||el.closest('.control')||el.closest('label.check')||el.parentElement}
+function ensureViewHome(){
+  const row=rowOf(faceted);
+  if(viewList&&row&&!viewList.contains(row)){
+    const label=document.createElement('label');label.className='mlr-menurow mlr-check';
+    const span=document.createElement('span');span.textContent='Faceted shading';
+    label.append(span,faceted);viewList.appendChild(label);
+  }
+  if(panel){
+    for(const c of panel.querySelectorAll('.control,label.check,.mlr10-section,.mlr-section')){
+      if(c.contains(faceted))continue;
+      const t=(c.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if(t==='faceted shading'||(/^faceted shading\b/.test(t)&&!viewPop?.contains(c)))c.style.setProperty('display','none','important');
+    }
+    for(const sec of panel.querySelectorAll('.mlr10-section,.mlr-section')){
+      const visible=[...sec.querySelectorAll('.control,label.check')].some(c=>getComputedStyle(c).display!=='none');
+      if(!visible)sec.style.setProperty('display','none','important');
+    }
+  }
+}
+ensureViewHome();
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>requestAnimationFrame(ensureViewHome));
+document.getElementById('mlrView')?.addEventListener('click',()=>setTimeout(ensureViewHome,0));
+const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const s=bars[0].querySelectorAll('span');if(s.length)s[s.length-1].textContent=`v${VERSION}`}
+})();
