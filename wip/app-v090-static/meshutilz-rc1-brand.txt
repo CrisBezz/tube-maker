@@ -1,0 +1,18 @@
+
+// MeshUtilz v0.9.0 RC1 — release-candidate branding authority
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.0 RC1';
+function brand(){
+ document.title=`${PRODUCT} v${VERSION}`;
+ document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);
+ const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;
+ const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}
+ // Replace remaining visible legacy product-name strings without touching functional mode names.
+ const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);for(const n of nodes){if(/Mesh Line Replacer/i.test(n.nodeValue||''))n.nodeValue=n.nodeValue.replace(/Mesh Line Replacer(?:\s*·\s*WIP)?/gi,PRODUCT)}
+}
+function settle(){brand();requestAnimationFrame(brand);setTimeout(brand,50);setTimeout(brand,150)}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',settle);
+for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(brand,150));
+requestAnimationFrame(settle);
+})();
