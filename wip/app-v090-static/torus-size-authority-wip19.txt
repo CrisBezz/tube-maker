@@ -1,0 +1,42 @@
+
+// v0.9.0-wip.19 — authoritative Torus SIZE branch after all legacy/context listeners
+(function(){
+const VERSION='0.9.0-wip.19';
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const ALL_HIDE=['hidden','mlr19-hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden'];
+const style=document.createElement('style');style.textContent='.mlr19-hidden{display:none!important}';document.head.appendChild(style);
+function torus(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();return /torus/.test(s)}
+function control(id){const e=document.getElementById(id);return e?.closest('.control')||null}
+function show(el){if(!el)return;ALL_HIDE.forEach(c=>el.classList.remove(c));el.style.setProperty('display','block','important')}
+function hide(el){if(!el)return;el.classList.add('mlr19-hidden');el.style.setProperty('display','none','important')}
+function sizeSection(){let s=panel.querySelector('.mlr10-section[data-mlr10="Size"]');if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10='Size';s.innerHTML='<summary>Size</summary><div class="mlr10-body"></div>';panel.appendChild(s)}ALL_HIDE.forEach(c=>s.classList.remove(c));s.style.removeProperty('display');s.open=true;return s}
+const SIZE_IDS=['torusSizeMode','torusRingScale','torusTubeScale','torusConstantRing','torusConstantTube'];
+function apply(){
+ if(!torus())return;
+ const sec=sizeSection(),body=sec.querySelector('.mlr10-body')||sec;
+ // Move the five live controls out of their legacy wrappers into the authoritative Torus SIZE section.
+ for(const id of SIZE_IDS){const c=control(id);if(c){show(c);body.appendChild(c)}}
+ // Remove all non-Torus controls from this SIZE section.
+ for(const c of [...body.querySelectorAll('.control')]){const owns=SIZE_IDS.some(id=>c.querySelector('#'+id));if(!owns)hide(c)}
+ const sm=document.getElementById('torusSizeMode');if(!sm)return;
+ const constant=sm.value==='constant';
+ show(control('torusSizeMode'));
+ if(constant){
+   hide(control('torusRingScale'));hide(control('torusTubeScale'));
+   show(control('torusConstantRing'));show(control('torusConstantTube'));
+ }else{
+   show(control('torusRingScale'));show(control('torusTubeScale'));
+   hide(control('torusConstantRing'));hide(control('torusConstantTube'));
+ }
+ // Foreign size controls must never appear in Torus mode.
+ ['diameter','solidThickness','hubScale','hubDetail','webWidth','customRelativeScale','customConstantSize'].forEach(id=>hide(control(id)));
+ document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const t=b.dataset.mlr12Target||b.dataset.target||'';if(t==='Size'){ALL_HIDE.forEach(c=>b.classList.remove(c));b.style.removeProperty('display')}});
+}
+function applyLate(){apply();requestAnimationFrame(()=>{apply();setTimeout(apply,30)})}
+const sm=document.getElementById('torusSizeMode');sm?.addEventListener('change',applyLate);
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',applyLate);
+// If an older UI module mutates classes after our listener, reassert the Torus branch once the mutation batch settles.
+let queued=false;const obs=new MutationObserver(()=>{if(queued||!torus())return;queued=true;requestAnimationFrame(()=>{queued=false;apply()})});obs.observe(panel,{subtree:true,attributes:true,attributeFilter:['class','style']});
+function stamp(){document.title=`Mesh Line Replacer v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+requestAnimationFrame(()=>{applyLate();stamp()});
+})();
