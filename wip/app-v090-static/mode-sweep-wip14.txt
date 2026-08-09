@@ -1,0 +1,31 @@
+
+// v0.9.0-wip.14 — explicit mode ownership sweep for inspector controls
+(function(){
+const VERSION='0.9.0-wip.14';document.title=`Mesh Line Replacer v${VERSION}`;const vv=document.querySelector('.version');if(vv)vv.textContent=`v${VERSION}`;const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;
+const panel=document.querySelector('.panel,.sidebar,.controls');if(!panel)return;
+const style=document.createElement('style');style.textContent=`.mlr14-hidden{display:none!important}`;document.head.appendChild(style);
+function txt(el){return(el?.textContent||'').replace(/\s+/g,' ').trim().toLowerCase()}function ids(el){return[...el.querySelectorAll?.('[id]')||[]].map(x=>x.id).join(' ').toLowerCase()}function key(el){return ids(el)+' '+txt(el)}
+function mode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();if(/torus/.test(s))return'torus';if(/import|custom|instance object/.test(s))return'custom';if(/solid/.test(s))return'solid';if(/inset|surface web/.test(s))return'inset';if(/tube|cylinder|faceted/.test(s))return'tubes';return'other'}
+const globalRx=/symmetr|placement|density|normal offset|force outward|size mode|relative|constant|scale|tilt|orientation|alignment|rotation/;
+const ownership=[
+ {rx:/hub detail|hubdetail|hub radius|hub size|junction hub|node hub/,m:['tubes']},
+ {rx:/junction|mitre|miter|tube sides|cylinder sides|tube radius|edge tube|faceted tube/,m:['tubes']},
+ {rx:/inset|surface web|web width|inset width/,m:['inset','solid']},
+ {rx:/solid web|solid surface|solidify|wall thickness|bevel|inside corner|outside corner/,m:['solid']},
+ {rx:/torus|major radius|ring radius|ring segments|tube segments/,m:['torus']},
+ {rx:/master object|instance object|custom instance|imported instance|repair|manifold|watertight|weld tolerance|master mesh|alignment axis/,m:['custom']},
+ {rx:/export mode|grouped instance|instance export/,m:['custom','torus']},
+ {rx:/faceted shading|base view|view mode|view target|wireframe|face normals|vertex normals|normal length|mesh analysis/,m:[]}
+];
+function allowed(c,m){const k=key(c);for(const rule of ownership)if(rule.rx.test(k))return rule.m.includes(m);if(globalRx.test(k))return true;return true}
+function refresh(){const m=mode();
+ for(const c of panel.querySelectorAll('.control,label.check')){const hide=!allowed(c,m);c.classList.toggle('mlr14-hidden',hide)}
+ // hide legacy wrappers/tabs whose visible content has vanished, including Hub Detail etc.
+ for(const wrap of panel.querySelectorAll('details,.mlr10-section,.section,.panel-section,section')){if(wrap.closest('.mlr-filepop,.mlr-viewpop2,.mlr-modepop'))continue;const controls=[...wrap.querySelectorAll('.control,label.check')];if(!controls.length)continue;const visible=controls.some(c=>!c.classList.contains('mlr14-hidden')&&!c.classList.contains('mlr11-hidden')&&!c.classList.contains('mlr10-hidden')&&!c.classList.contains('mlr-consolidated-hidden')&&getComputedStyle(c).display!=='none');wrap.classList.toggle('mlr14-hidden',!visible)}
+ // keep inspector navigator honest: hide buttons for empty sections.
+ document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const n=b.dataset.mlr12Target||b.dataset.target||'';const sec=n?panel.querySelector(`[data-mlr10="${CSS.escape(n)}"]`):null;if(sec)b.classList.toggle('mlr14-hidden',sec.classList.contains('mlr14-hidden'))});
+}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>requestAnimationFrame(refresh));
+refresh();
+const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}
+})();
