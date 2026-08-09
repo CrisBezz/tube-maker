@@ -1,0 +1,62 @@
+
+// MeshUtilz v0.9.1-wip.1 — neighbourhood orientation smoothing prototype
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.1-wip.1';
+const panel=document.querySelector('.panel,.sidebar,.controls');
+if(!panel||typeof THREE==='undefined')return;
+const nativeFrame=typeof torusLocalFrame==='function'?torusLocalFrame:null;
+const nativeNodeFrame=typeof torusNodeFrame==='function'?torusNodeFrame:null;
+if(!nativeFrame||!nativeNodeFrame)return;
+
+const style=document.createElement('style');style.textContent='.muz-orient-hidden{display:none!important}';document.head.appendChild(style);
+function currentMode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();if(/import|custom|instance object/.test(s))return'custom';if(/torus/.test(s))return'torus';return'other'}
+function control(id){const e=document.getElementById(id);return e?.closest('.control')||null}
+function orientationBody(){let s=panel.querySelector('.mlr10-section[data-mlr10="Orientation"]');if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10='Orientation';s.innerHTML='<summary>Orientation</summary><div class="mlr10-body"></div>';panel.appendChild(s)}s.classList.remove('mlr24-hidden','mlr21-hidden','mlr20-hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','hidden');s.style.removeProperty('display');return s.querySelector('.mlr10-body')||s}
+function addControls(prefix){if(document.getElementById(prefix+'OrientationField'))return;const body=orientationBody();const field=document.createElement('div');field.className='control muz-orient-control';field.dataset.muzMode=prefix==='torus'?'torus':'custom';field.innerHTML=`<label for="${prefix}OrientationField">Orientation field</label><select id="${prefix}OrientationField"><option value="local" selected>Local</option><option value="smooth">Neighbour smoothed</option></select>`;const smooth=document.createElement('div');smooth.className='control muz-orient-control muz-orient-hidden';smooth.dataset.muzMode=field.dataset.muzMode;smooth.innerHTML=`<label for="${prefix}OrientationSmooth">Smoothing</label><output id="${prefix}OrientationSmoothOut">60%</output><input id="${prefix}OrientationSmooth" type="range" min="0" max="100" value="60" step="5" />`;body.prepend(smooth);body.prepend(field);const sel=field.querySelector('select'),range=smooth.querySelector('input'),out=smooth.querySelector('output');function update(){smooth.classList.toggle('muz-orient-hidden',sel.value!=='smooth');out.value=`${range.value}%`}sel.addEventListener('change',update);range.addEventListener('input',update);update()}
+addControls('torus');addControls('custom');
+
+let cachedFaces=null,cachedSignature='';
+function faceCentre(face){return face.reduce((a,p)=>a.add(p),new THREE.Vector3()).multiplyScalar(1/Math.max(face.length,1))}
+function collectContext(){
+ try{
+   const result=typeof collectFaces==='function'?collectFaces():null;let faces=result?.faces||[];
+   if(!faces.length)return[];
+   if(typeof orientTorusFaces==='function')faces=orientTorusFaces(faces);
+   const sig=`${faces.length}:${faces[0]?.length||0}:${faces[0]?.[0]?.x||0}`;
+   if(sig===cachedSignature&&cachedFaces)return cachedFaces;
+   cachedSignature=sig;
+   cachedFaces=faces.map(face=>{const centre=faceCentre(face),normal=typeof polygonNormal==='function'?polygonNormal(face):null;if(!normal)return null;const frame=nativeFrame(face,normal.clone(),centre.clone());return frame?{face,centre,normal:frame.normal.clone().normalize(),xAxis:frame.xAxis.clone().normalize()}:null}).filter(Boolean);
+   return cachedFaces;
+ }catch(e){console.warn('MeshUtilz smoothing context failed',e);return[]}
+}
+function strength(){const m=currentMode(),p=m==='custom'?'custom':'torus';const field=document.getElementById(p+'OrientationField');if(field?.value!=='smooth')return 0;return Math.max(0,Math.min(1,Number(document.getElementById(p+'OrientationSmooth')?.value||0)/100))}
+function smoothFrame(base,point){
+ const amount=strength();if(amount<=0)return base;
+ const context=collectContext();if(context.length<2)return base;
+ // Find a small spatial neighbourhood. Limiting to 12 keeps this prototype responsive on denser meshes.
+ const near=context.map(r=>({r,d:r.centre.distanceToSquared(point)})).sort((a,b)=>a.d-b.d).slice(0,12);
+ const baseN=base.normal.clone().normalize(),baseX=base.xAxis.clone().normalize();
+ const avgN=new THREE.Vector3(),avgX=new THREE.Vector3();let wsum=0;
+ for(const {r,d} of near){
+   const w=1/(Math.sqrt(d)+1e-6);const n=r.normal.clone();if(n.dot(baseN)<0)n.negate();let x=r.xAxis.clone();if(x.dot(baseX)<0)x.negate();avgN.addScaledVector(n,w);avgX.addScaledVector(x,w);wsum+=w;
+ }
+ if(wsum<=0||avgN.lengthSq()<1e-12)return base;
+ avgN.normalize();
+ const n=baseN.clone().lerp(avgN,amount).normalize();
+ // Tangent averaging removes rotational chatter. Project back into the smoothed normal plane.
+ avgX.multiplyScalar(1/wsum);avgX.addScaledVector(n,-avgX.dot(n));if(avgX.lengthSq()<1e-12){avgX.copy(baseX).addScaledVector(n,-baseX.dot(n))}avgX.normalize();
+ let x=baseX.clone();x.addScaledVector(n,-x.dot(n));if(x.lengthSq()<1e-12)x.copy(avgX);else x.normalize();x.lerp(avgX,amount);x.addScaledVector(n,-x.dot(n));if(x.lengthSq()<1e-12)x.copy(avgX);x.normalize();
+ const y=n.clone().cross(x).normalize();
+ return{xAxis:x,yAxis:y,normal:n};
+}
+// Wrap the existing frame builders, leaving placement positions, scaling, tilt and axis correction untouched.
+torusLocalFrame=function(face,normal,centre){const base=nativeFrame(face,normal,centre);if(!base||strength()<=0)return base;return smoothFrame(base,centre||faceCentre(face))};
+torusNodeFrame=function(node){const base=nativeNodeFrame(node);if(!base||strength()<=0||!node?.point)return base;return smoothFrame(base,node.point)};
+
+function applyUI(){const m=currentMode();for(const c of document.querySelectorAll('.muz-orient-control')){const show=c.dataset.muzMode===m;c.classList.toggle('mlr24-hidden',!show);c.style.display=show?'':'none'}if(m==='torus'||m==='custom'){const body=orientationBody();for(const c of document.querySelectorAll(`.muz-orient-control[data-muz-mode="${m}"]`))body.prepend(c)}stamp()}
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function settle(){cachedSignature='';cachedFaces=null;applyUI();requestAnimationFrame(applyUI);setTimeout(applyUI,160)}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',settle);
+for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>{cachedSignature='';cachedFaces=null;setTimeout(stamp,150)});
+requestAnimationFrame(settle);
+})();
