@@ -1,0 +1,26 @@
+
+// v0.9.0-wip.20 — stability pass: no MutationObserver, event-driven Torus inspector only
+(function(){
+const VERSION='0.9.0-wip.20';
+const panel=document.querySelector('.panel,.sidebar,.controls'); if(!panel)return;
+const HIDE_CLASSES=['hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden'];
+const style=document.createElement('style');style.textContent='.mlr20-hidden{display:none!important}';document.head.appendChild(style);
+function isTorus(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();return /torus/.test(s)}
+function control(id){const e=document.getElementById(id);return e?.closest('.control')||e?.closest('label.check')||null}
+function reveal(el){if(!el)return;HIDE_CLASSES.forEach(c=>el.classList.remove(c));el.classList.remove('mlr20-hidden');el.style.removeProperty('display')}
+function conceal(el){if(!el)return;el.classList.add('mlr20-hidden');el.style.setProperty('display','none','important')}
+function section(name){return panel.querySelector(`.mlr10-section[data-mlr10="${name}"]`)}
+function ensureSection(name){let s=section(name);if(!s){s=document.createElement('details');s.className='mlr10-section';s.dataset.mlr10=name;s.innerHTML=`<summary>${name}</summary><div class="mlr10-body"></div>`;panel.appendChild(s)}reveal(s);return s}
+function move(id,name){const c=control(id);if(!c)return;const s=ensureSection(name),body=s.querySelector('.mlr10-body')||s;reveal(c);body.appendChild(c)}
+function applyTorusSize(){if(!isTorus())return;const ids=['torusSizeMode','torusRingScale','torusTubeScale','torusConstantRing','torusConstantTube'];ids.forEach(id=>move(id,'Size'));const body=ensureSection('Size').querySelector('.mlr10-body');for(const c of [...body.querySelectorAll('.control,label.check')]){const own=ids.some(id=>c.querySelector?.('#'+id));if(!own)conceal(c)}const sm=document.getElementById('torusSizeMode');const constant=sm?.value==='constant';reveal(control('torusSizeMode'));if(constant){conceal(control('torusRingScale'));conceal(control('torusTubeScale'));reveal(control('torusConstantRing'));reveal(control('torusConstantTube'))}else{reveal(control('torusRingScale'));reveal(control('torusTubeScale'));conceal(control('torusConstantRing'));conceal(control('torusConstantTube'))}['diameter','solidThickness','hubScale','hubDetail','webWidth'].forEach(id=>conceal(control(id)));const s=section('Size');if(s)s.open=true}
+function applyTorusPlacementOrientation(){if(!isTorus())return;['torusPlacementMode','torusDensity','torusNormalMode','torusNormalOffset'].forEach(id=>move(id,'Placement'));['torusAxis','torusTiltX','torusTiltY'].forEach(id=>move(id,'Orientation'))}
+function removeImportModel(){for(const el of document.querySelectorAll('button,a,label,.file-button')){if(el.closest('.mlr-filepop'))continue;const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t==='import model'||t==='import model…')conceal(el)}}
+function updateNavigator(){for(const name of ['Placement','Size','Orientation']){const s=section(name);if(!s)continue;document.querySelectorAll('.mlr12-nav button,[data-mlr12-target]').forEach(b=>{const t=b.dataset.mlr12Target||b.dataset.target||'';if(t===name)reveal(b)})}}
+function stamp(){document.title=`Mesh Line Replacer v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`Version ${VERSION}`;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function refresh(){removeImportModel();if(isTorus()){applyTorusPlacementOrientation();applyTorusSize();updateNavigator()}stamp()}
+// Event-driven only. No MutationObserver: prevents inspector feedback loops after Generate.
+document.getElementById('torusSizeMode')?.addEventListener('change',()=>setTimeout(refresh,0));
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>setTimeout(refresh,0));
+for(const id of ['generateBtn','generate','buildBtn'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(refresh,100));
+requestAnimationFrame(refresh);
+})();
