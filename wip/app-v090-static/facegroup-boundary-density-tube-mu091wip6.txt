@@ -1,0 +1,132 @@
+
+// MeshUtilz v0.9.1-wip.6 — boundary-only density + closed facegroup-boundary tube
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.1-wip.6';
+if(typeof THREE==='undefined'||typeof sourceRoot==='undefined')return;
+
+// ---------------------------------------------------------------------------
+// 1. Facegroup-boundary density must remain one-dimensional along the seam.
+// ---------------------------------------------------------------------------
+let boundaryDensityActive=false;
+const nativeDensityRecords=typeof densityRecordsForFaces==='function'?densityRecordsForFaces:null;
+if(nativeDensityRecords){
+ densityRecordsForFaces=function(faces,placementMode,level){
+   if(boundaryDensityActive&&placementMode==='node'){
+     return buildSharedNodePlacements(faces).map(p=>({kind:'node',source:p}));
+   }
+   return nativeDensityRecords(faces,placementMode,level);
+ };
+}
+function boundarySelected(select){return select?.value==='facegroupBoundary'}
+function densityInputFor(select){return select?.id==='customPlacementMode'?document.getElementById('customDensity'):document.getElementById('torusDensity')}
+function effectiveBoundarySpacing(select){
+ const base=document.getElementById('fgBoundarySpacing');
+ const d=densityInputFor(select);const baseSpacing=Math.max(Number(base?.value||0.1),0.000001);const level=Number(d?.value||0);
+ // Each two slider steps approximately doubles/halves density while keeping every sample on the seam.
+ return baseSpacing/Math.pow(2,level/2);
+}
+function wrapBoundaryDensity(fn,selectId){
+ if(typeof fn!=='function')return fn;
+ return async function(){
+   const select=document.getElementById(selectId);if(!boundarySelected(select))return fn.apply(this,arguments);
+   const spacing=document.getElementById('fgBoundarySpacing');const old=spacing?.value;
+   if(spacing)spacing.value=String(effectiveBoundarySpacing(select));boundaryDensityActive=true;
+   try{return await fn.apply(this,arguments)}finally{boundaryDensityActive=false;if(spacing&&old!=null)spacing.value=old;setTimeout(refreshBoundaryDensityUI,0)}
+ };
+}
+if(typeof generateFaceTorusResult==='function')generateFaceTorusResult=wrapBoundaryDensity(generateFaceTorusResult,'torusPlacementMode');
+if(typeof generateCustomInstanceResult==='function')generateCustomInstanceResult=wrapBoundaryDensity(generateCustomInstanceResult,'customPlacementMode');
+
+function refreshBoundaryDensityUI(){
+ for(const select of [document.getElementById('torusPlacementMode'),document.getElementById('customPlacementMode')]){
+   if(!select)continue;const density=densityInputFor(select),out=density?document.getElementById(density.id+'Out'):null;
+   if(boundarySelected(select)&&density&&out){const eff=effectiveBoundarySpacing(select);out.value=`${Number(density.value)>0?'+':''}${density.value} · ${eff.toFixed(3)}`;}
+ }
+ stamp();
+}
+for(const id of ['torusPlacementMode','customPlacementMode','torusDensity','customDensity','fgBoundarySpacing']){
+ const e=document.getElementById(id);e?.addEventListener(e?.type==='range'?'input':'input',refreshBoundaryDensityUI);e?.addEventListener('change',refreshBoundaryDensityUI);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Independent Nomad facegroup seam reader for Boundary Tube mode.
+// ---------------------------------------------------------------------------
+let tubeGlbPrimitiveGroups=[];
+function readPrimitiveGroups(file){
+ if(!file||!file.name?.toLowerCase().endsWith('.glb')){tubeGlbPrimitiveGroups=[];return;}
+ file.arrayBuffer().then(buf=>{try{
+   const dv=new DataView(buf);if(dv.getUint32(0,true)!==0x46546c67)return;let off=12,json=null;
+   while(off+8<=buf.byteLength){const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true);off+=8;if(type===0x4e4f534a){json=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,off,len)).replace(/\0+$/,''));break;}off+=len;}
+   const groups=[];for(const mesh of json?.meshes||[])for(const prim of mesh.primitives||[])groups.push(prim?.extras?.nomad?.group??null);tubeGlbPrimitiveGroups=groups;
+ }catch(e){console.warn('MeshUtilz boundary-tube GLB metadata parse failed',e);tubeGlbPrimitiveGroups=[];}});
+}
+try{fileInput?.addEventListener('change',()=>{const f=fileInput.files?.[0];if(f)readPrimitiveGroups(f)},true)}catch{}
+
+function qKey(p,t){return `${Math.round(p.x/t)},${Math.round(p.y/t)},${Math.round(p.z/t)}`}
+function objectGroup(obj,fallback){
+ const vals=[obj?.userData?.nomad?.group,obj?.geometry?.userData?.nomad?.group,obj?.userData?.extras?.nomad?.group,obj?.geometry?.userData?.extras?.nomad?.group];
+ for(const v of vals)if(v!==undefined&&v!==null)return v;return fallback;
+}
+function collectBoundaryTubeTriangles(){
+ if(!sourceRoot)return[];sourceRoot.updateMatrixWorld(true);const tris=[];let primitiveIndex=0;
+ sourceRoot.traverse(obj=>{
+   if(!obj.isMesh||!obj.geometry?.attributes?.position)return;
+   const g=obj.geometry,p=g.getAttribute('position'),idx=g.index;const groups=g.groups?.length?g.groups:[{start:0,count:idx?idx.count:p.count}];
+   for(let gi=0;gi<groups.length;gi++){
+     const gr=groups[gi],fallback=tubeGlbPrimitiveGroups[primitiveIndex+gi]??primitiveIndex+gi,gid=objectGroup(obj,fallback),start=gr.start||0,end=Math.min(start+(gr.count||0),idx?idx.count:p.count);
+     for(let i=start;i+2<end;i+=3){const ids=[idx?idx.getX(i):i,idx?idx.getX(i+1):i+1,idx?idx.getX(i+2):i+2];const v=ids.map(k=>new THREE.Vector3(p.getX(k),p.getY(k),p.getZ(k)).applyMatrix4(obj.matrixWorld));const n=v[1].clone().sub(v[0]).cross(v[2].clone().sub(v[0]));if(n.lengthSq()>1e-18)tris.push({v,normal:n.normalize(),group:gid});}
+   }
+   primitiveIndex+=Math.max(groups.length,1);
+ });return tris;
+}
+function boundaryTubeSegments(){
+ const tris=collectBoundaryTubeTriangles();if(!tris.length)return[];const box=new THREE.Box3();tris.forEach(t=>t.v.forEach(p=>box.expandByPoint(p)));const tol=Math.max(box.getSize(new THREE.Vector3()).length(),1e-6)*1e-6,edges=new Map();
+ const add=(a,b,t)=>{const ka=qKey(a,tol),kb=qKey(b,tol),key=ka<kb?`${ka}|${kb}`:`${kb}|${ka}`;let e=edges.get(key);if(!e){const forward=ka<kb;e={ka:forward?ka:kb,kb:forward?kb:ka,a:(forward?a:b).clone(),b:(forward?b:a).clone(),refs:[]};edges.set(key,e)}e.refs.push(t)};
+ for(const t of tris){add(t.v[0],t.v[1],t);add(t.v[1],t.v[2],t);add(t.v[2],t.v[0],t)}
+ const out=[];for(const e of edges.values()){if(new Set(e.refs.map(r=>String(r.group))).size<2)continue;let n=new THREE.Vector3(),seed=e.refs[0].normal;for(const r of e.refs){const rn=r.normal.clone();if(rn.dot(seed)<0)rn.negate();n.add(rn)}if(n.lengthSq()>1e-14)out.push({...e,normal:n.normalize()});}return out;
+}
+function traceTubeChains(segments){
+ const adj=new Map();segments.forEach((s,i)=>{for(const k of [s.ka,s.kb]){let a=adj.get(k);if(!a){a=[];adj.set(k,a)}a.push(i)}});const used=new Uint8Array(segments.length),chains=[];
+ function walk(seed,key){const pts=[];let ei=seed,guard=0;while(ei!=null&&!used[ei]&&guard++<segments.length+3){const s=segments[ei];used[ei]=1;const f=s.ka===key,a=f?s.a:s.b,b=f?s.b:s.a,nextKey=f?s.kb:s.ka;if(!pts.length)pts.push(a.clone());pts.push(b.clone());const candidates=(adj.get(nextKey)||[]).filter(j=>!used[j]);if(!candidates.length)break;ei=candidates[0];key=nextKey;}const closed=pts.length>2&&pts[0].distanceToSquared(pts[pts.length-1])<1e-10;if(closed)pts.pop();return{points:pts,closed};}
+ for(const [key,list] of adj)if(list.length!==2)for(const ei of list)if(!used[ei])chains.push(walk(ei,key));for(let i=0;i<segments.length;i++)if(!used[i])chains.push(walk(i,segments[i].ka));return chains.filter(c=>c.points.length>=2);
+}
+
+// Exact piecewise-linear curve: TubeGeometry follows the detected seam rather than smoothing away from it.
+class BoundaryPolylineCurve extends THREE.Curve{
+ constructor(points,closed){super();this.points=points.map(p=>p.clone());this.closed=closed;this.lengths=[];this.total=0;const count=closed?this.points.length:this.points.length-1;for(let i=0;i<count;i++){const l=this.points[i].distanceTo(this.points[(i+1)%this.points.length]);this.lengths.push(l);this.total+=l;}}
+ getPoint(t,target=new THREE.Vector3()){if(!this.points.length)return target.set(0,0,0);if(this.total<=1e-12)return target.copy(this.points[0]);let d=Math.max(0,Math.min(1,t))*this.total,acc=0;for(let i=0;i<this.lengths.length;i++){const l=this.lengths[i];if(d<=acc+l||i===this.lengths.length-1){const u=l>1e-12?(d-acc)/l:0;return target.copy(this.points[i]).lerp(this.points[(i+1)%this.points.length],Math.max(0,Math.min(1,u)));}acc+=l;}return target.copy(this.points[this.points.length-1]);}
+}
+
+// ---------------------------------------------------------------------------
+// Boundary Tube UI + generator.
+// ---------------------------------------------------------------------------
+const nativeMode=document.getElementById('replaceMode'),topMode=document.getElementById('mlrMode');
+function addModeOption(sel){if(sel&&![...sel.options].some(o=>o.value==='facegroupBoundaryTube'))sel.add(new Option('Facegroup boundary tube','facegroupBoundaryTube'));}
+addModeOption(nativeMode);addModeOption(topMode);
+
+const panel=document.querySelector('.panel,.sidebar,.controls');
+let tubeSection=document.getElementById('fgBoundaryTubeSection');
+if(!tubeSection&&panel){tubeSection=document.createElement('details');tubeSection.id='fgBoundaryTubeSection';tubeSection.className='mlr10-section';tubeSection.open=true;tubeSection.innerHTML=`<summary>BOUNDARY TUBE</summary><div class="mlr10-body"><div class="control"><label for="fgTubeDiameter">Tube diameter</label><input id="fgTubeDiameter" type="number" min="0.0001" step="0.01" value="0.05" inputmode="decimal" /></div><div class="control"><label for="fgTubeRadialSegments">Radial segments</label><output id="fgTubeRadialSegmentsOut">12</output><input id="fgTubeRadialSegments" type="range" min="3" max="48" step="1" value="12" /></div><div class="control"><label for="fgTubePathSegments">Path resolution</label><output id="fgTubePathSegmentsOut">2×</output><input id="fgTubePathSegments" type="range" min="1" max="6" step="1" value="2" /></div><div class="control"><label for="fgTubeNormalOffset">Normal offset</label><input id="fgTubeNormalOffset" type="number" step="0.001" value="0" inputmode="decimal" /></div><p class="note">Uses each detected Nomad facegroup boundary as the tube centreline. Closed boundaries generate closed watertight tubes.</p></div>`;panel.appendChild(tubeSection)}
+const radial=document.getElementById('fgTubeRadialSegments'),radialOut=document.getElementById('fgTubeRadialSegmentsOut'),pathSeg=document.getElementById('fgTubePathSegments'),pathOut=document.getElementById('fgTubePathSegmentsOut');
+radial?.addEventListener('input',()=>{if(radialOut)radialOut.value=radial.value});pathSeg?.addEventListener('input',()=>{if(pathOut)pathOut.value=`${pathSeg.value}×`});
+function activeNativeMode(){return nativeMode?.value||topMode?.value||''}
+function applyTubeUI(){if(!tubeSection)return;const on=activeNativeMode()==='facegroupBoundaryTube';tubeSection.style.display=on?'':'none';if(on){tubeSection.classList.remove('hidden','mlr24-hidden','mlr-mode-hidden');tubeSection.open=true;}stamp()}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>setTimeout(applyTubeUI,0));
+
+function offsetChain(points,offset){if(Math.abs(offset)<1e-12)return points.map(p=>p.clone());const centre=new THREE.Box3().setFromPoints(points).getCenter(new THREE.Vector3());return points.map(p=>{const n=p.clone().sub(centre);if(n.lengthSq()<1e-12)n.set(0,1,0);return p.clone().addScaledVector(n.normalize(),offset)});}
+async function generateBoundaryTube(){
+ if(!sourceRoot)return;const segments=boundaryTubeSegments(),chains=traceTubeChains(segments);if(!chains.length){setStatus('No Nomad facegroup boundaries were detected for tube generation');return;}
+ const dia=Number(document.getElementById('fgTubeDiameter')?.value||0.05),radius=dia*0.5,rad=Math.max(3,Number(radial?.value||12)),mult=Math.max(1,Number(pathSeg?.value||2)),off=Number(document.getElementById('fgTubeNormalOffset')?.value||0);if(!Number.isFinite(radius)||radius<=0){setStatus('Tube diameter must be greater than zero');return;}
+ generateBtn.disabled=true;try{await new Promise(r=>requestAnimationFrame(r));disposeObject(resultRoot);resultRoot=new THREE.Group();resultRoot.name='FacegroupBoundaryTubes';let made=0,totalFaces=0,closedCount=0;
+   for(const chain of chains){if(chain.points.length<2)continue;const pts=offsetChain(chain.points,off),curve=new BoundaryPolylineCurve(pts,chain.closed),pathCount=Math.max(chain.closed?pts.length*mult:Math.max(1,(pts.length-1)*mult),3);const g=new THREE.TubeGeometry(curve,pathCount,radius,rad,chain.closed);g.name='FacegroupBoundaryTubeGeometry';g.computeVertexNormals();const mat=new THREE.MeshStandardMaterial({color:0xe6a4ff,roughness:0.52,metalness:0.04,side:THREE.DoubleSide});const mesh=new THREE.Mesh(g,mat);mesh.name=chain.closed?'ClosedFacegroupBoundaryTube':'OpenFacegroupBoundaryTube';resultRoot.add(mesh);made++;if(chain.closed)closedCount++;totalFaces+=g.index?g.index.count/3:g.getAttribute('position').count/3;}
+   scene.add(resultRoot);sourceRoot.visible=showSource.checked;exportBtn.disabled=false;setStatus(`Generated ${made} facegroup-boundary tube${made===1?'':'s'} • ${closedCount} closed • diameter ${dia.toFixed(3)}`);setOutputMetrics({faces:Math.round(totalFaces),holes:closedCount,exported:false});
+ }catch(e){console.error(e);setStatus(`Boundary tube generation failed: ${e.message||e}`)}finally{generateBtn.disabled=false;stamp()}
+}
+
+// Capture before legacy generate handlers when Boundary Tube mode is active.
+generateBtn?.addEventListener('click',e=>{if(activeNativeMode()!=='facegroupBoundaryTube')return;e.preventDefault();e.stopImmediatePropagation();generateBoundaryTube();},true);
+
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function settle(){applyTubeUI();refreshBoundaryDensityUI();requestAnimationFrame(()=>{applyTubeUI();refreshBoundaryDensityUI()});setTimeout(()=>{applyTubeUI();refreshBoundaryDensityUI()},180)}
+requestAnimationFrame(settle);
+})();
