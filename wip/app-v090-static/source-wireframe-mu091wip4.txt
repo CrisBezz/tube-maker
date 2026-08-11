@@ -1,0 +1,23 @@
+
+// MeshUtilz v0.9.1-wip.4 — independent source-mesh wireframe overlay
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.1-wip.4';
+if(typeof THREE==='undefined')return;
+let toggle=document.getElementById('viewSourceWireframe');
+if(!toggle){toggle=document.createElement('input');toggle.type='checkbox';toggle.id='viewSourceWireframe';toggle.checked=false;}
+const helperRoot=new THREE.Group();helperRoot.name='MeshUtilzSourceWireframe';scene.add(helperRoot);
+function disposeHelper(obj){obj.traverse?.(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m?.dispose?.());else c.material?.dispose?.()});obj.removeFromParent?.()}
+function clear(){while(helperRoot.children.length)disposeHelper(helperRoot.children[helperRoot.children.length-1])}
+function addWireForMesh(mesh,matrixOverride=null){if(!mesh?.geometry)return;const geo=new THREE.WireframeGeometry(mesh.geometry);const mat=new THREE.LineBasicMaterial({color:0x101318,transparent:true,opacity:0.88,depthTest:false,depthWrite:false});const line=new THREE.LineSegments(geo,mat);line.renderOrder=999;line.matrixAutoUpdate=false;if(matrixOverride)line.matrix.multiplyMatrices(mesh.matrixWorld,matrixOverride);else line.matrix.copy(mesh.matrixWorld);helperRoot.add(line)}
+function rebuild(){clear();helperRoot.visible=!!toggle.checked;if(!toggle.checked)return;let root=null;try{root=sourceRoot}catch{}if(!root)return;root.updateMatrixWorld?.(true);root.traverse?.(obj=>{if(!obj.isMesh&&!obj.isInstancedMesh)return;if(obj.isInstancedMesh){const m=new THREE.Matrix4();const count=Math.min(obj.count,2500);for(let i=0;i<count;i++){obj.getMatrixAt(i,m);addWireForMesh(obj,m)}}else addWireForMesh(obj)});helperRoot.visible=true}
+toggle.addEventListener('change',rebuild);
+function viewRow(){const row=document.createElement('label');row.className='mlr-menurow mlr-check';const span=document.createElement('span');span.textContent='Source wireframe';row.append(span,toggle);return row}
+function injectIntoView(){const pop=document.querySelector('.mlr-viewpop2');const list=pop?.querySelector('#mlrViewList');if(!list)return;const existing=list.querySelector('[data-muz-source-wire]');if(existing)existing.remove();const row=viewRow();row.dataset.muzSourceWire='1';const faceted=document.getElementById('viewFacetedShading');const facetedRow=faceted?.closest('.mlr-menurow');if(facetedRow)facetedRow.insertAdjacentElement('afterend',row);else list.appendChild(row)}
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function settle(){injectIntoView();if(toggle.checked)rebuild();stamp()}
+const viewBtn=document.getElementById('mlrView');viewBtn?.addEventListener('click',()=>setTimeout(injectIntoView,0));
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>setTimeout(settle,160));
+for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(()=>{if(toggle.checked)rebuild();stamp()},180));
+const fileInput=document.getElementById('fileInput');fileInput?.addEventListener('change',()=>setTimeout(()=>{if(toggle.checked)rebuild();stamp()},250));
+requestAnimationFrame(settle);
+})();
