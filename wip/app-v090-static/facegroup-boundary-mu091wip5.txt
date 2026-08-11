@@ -1,0 +1,104 @@
+
+// MeshUtilz v0.9.1-wip.5 — Nomad facegroup-boundary placement prototype
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.1-wip.5';
+if(typeof THREE==='undefined'||typeof fileInput==='undefined')return;
+let glbPrimitiveGroups=[];
+
+function parseGlbPrimitiveGroups(file){
+  if(!file||!file.name?.toLowerCase().endsWith('.glb')){glbPrimitiveGroups=[];return;}
+  file.arrayBuffer().then(buf=>{
+    try{
+      const dv=new DataView(buf); if(dv.getUint32(0,true)!==0x46546c67)return;
+      let off=12,json=null;
+      while(off+8<=buf.byteLength){const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true);off+=8;if(type===0x4e4f534a){json=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,off,len)).replace(/\0+$/,''));break}off+=len;}
+      const groups=[];for(const mesh of json?.meshes||[])for(const prim of mesh.primitives||[])groups.push(prim?.extras?.nomad?.group ?? null);
+      glbPrimitiveGroups=groups;
+    }catch(e){console.warn('MeshUtilz facegroup metadata parse failed',e);glbPrimitiveGroups=[];}
+  });
+}
+fileInput.addEventListener('change',()=>{const f=fileInput.files?.[0];if(f)parseGlbPrimitiveGroups(f);},true);
+
+function addPlacementOption(select){if(select&&![...select.options].some(o=>o.value==='facegroupBoundary'))select.add(new Option('Facegroup boundary','facegroupBoundary'));}
+addPlacementOption(document.getElementById('torusPlacementMode'));addPlacementOption(document.getElementById('customPlacementMode'));
+
+function makeControl(id,label,html){let e=document.getElementById(id);if(e)return e.closest('.control')||e;const c=document.createElement('div');c.className='control muz-fg-control';c.innerHTML=`<label for="${id}">${label}</label>${html}`;return c;}
+const spacingControl=makeControl('fgBoundarySpacing','Boundary spacing','<input id="fgBoundarySpacing" type="number" min="0.001" step="0.01" value="0.10" inputmode="decimal" />');
+const alignControl=makeControl('fgBoundaryAlignment','Boundary alignment','<select id="fgBoundaryAlignment"><option value="surface" selected>Surface normal</option><option value="along">Along boundary</option><option value="across">Across boundary</option></select>');
+const spacing=spacingControl.querySelector?.('#fgBoundarySpacing')||document.getElementById('fgBoundarySpacing');
+const alignment=alignControl.querySelector?.('#fgBoundaryAlignment')||document.getElementById('fgBoundaryAlignment');
+
+function section(name){return document.querySelector(`.mlr10-section[data-mlr10="${name}"]`)}
+function body(name){const s=section(name);return s?.querySelector('.mlr10-body')||s}
+function reveal(el){if(!el)return;for(const c of ['hidden','mlr24-hidden','mlr21-hidden','mlr20-hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden','muz-orient-hidden'])el.classList.remove(c);el.style.removeProperty('display')}
+function hide(el){if(!el)return;el.style.setProperty('display','none','important')}
+function activeMode(){const e=document.getElementById('replaceMode')||document.getElementById('mlrMode');const s=((e?.value||'')+' '+(e?.selectedOptions?.[0]?.textContent||'')).toLowerCase();if(/import|custom|instance object/.test(s))return'custom';if(/torus/.test(s))return'torus';return'other'}
+function placementSelect(){return activeMode()==='custom'?document.getElementById('customPlacementMode'):activeMode()==='torus'?document.getElementById('torusPlacementMode'):null}
+function boundaryActive(){return placementSelect()?.value==='facegroupBoundary'}
+function applyUI(){
+ const pb=body('Placement'),ob=body('Orientation');if(pb){reveal(spacingControl);pb.appendChild(spacingControl)}if(ob){reveal(alignControl);ob.insertBefore(alignControl,ob.firstChild)}
+ if(boundaryActive()){reveal(spacingControl);reveal(alignControl)}else{hide(spacingControl);hide(alignControl)}
+ stamp();
+}
+for(const id of ['torusPlacementMode','customPlacementMode'])document.getElementById(id)?.addEventListener('change',()=>setTimeout(applyUI,0));
+
+function groupFromObject(obj,fallback){
+ const candidates=[obj?.userData?.nomad?.group,obj?.geometry?.userData?.nomad?.group,obj?.userData?.extras?.nomad?.group,obj?.geometry?.userData?.extras?.nomad?.group,obj?.userData?.gltfExtensions?.nomad?.group,obj?.geometry?.userData?.gltfExtensions?.nomad?.group];
+ for(const v of candidates)if(v!==undefined&&v!==null)return v;return fallback;
+}
+function qkey(p,t){return `${Math.round(p.x/t)},${Math.round(p.y/t)},${Math.round(p.z/t)}`}
+function sourceBounds(){const b=new THREE.Box3();try{sourceRoot?.updateMatrixWorld?.(true);sourceRoot?.traverse?.(o=>{if(o.isMesh&&o.geometry?.attributes?.position)b.expandByObject(o)})}catch{}return b}
+function collectGroupedTriangles(){
+ if(!sourceRoot)return[];sourceRoot.updateMatrixWorld(true);const tris=[];let primitiveIndex=0;
+ sourceRoot.traverse(obj=>{
+   if(!obj.isMesh||!obj.geometry?.attributes?.position)return;const g=obj.geometry,p=g.getAttribute('position'),idx=g.index;const groups=g.groups?.length?g.groups:[{start:0,count:idx?idx.count:p.count}];
+   for(let gi=0;gi<groups.length;gi++){
+     const gr=groups[gi],fallback=glbPrimitiveGroups[primitiveIndex] ?? glbPrimitiveGroups[primitiveIndex+gi] ?? primitiveIndex+gi;const gid=groupFromObject(obj,fallback);
+     const start=gr.start||0,end=Math.min(start+(gr.count||0),idx?idx.count:p.count);
+     for(let i=start;i+2<end;i+=3){const ia=idx?idx.getX(i):i,ib=idx?idx.getX(i+1):i+1,ic=idx?idx.getX(i+2):i+2;const a=new THREE.Vector3(p.getX(ia),p.getY(ia),p.getZ(ia)).applyMatrix4(obj.matrixWorld),b=new THREE.Vector3(p.getX(ib),p.getY(ib),p.getZ(ib)).applyMatrix4(obj.matrixWorld),c=new THREE.Vector3(p.getX(ic),p.getY(ic),p.getZ(ic)).applyMatrix4(obj.matrixWorld);const n=b.clone().sub(a).cross(c.clone().sub(a));if(n.lengthSq()>1e-18)tris.push({a,b,c,normal:n.normalize(),group:gid});}
+   }
+   primitiveIndex+=Math.max(groups.length,1);
+ });return tris;
+}
+function buildBoundarySegments(){
+ const tris=collectGroupedTriangles();if(!tris.length)return[];const box=sourceBounds(),diag=Math.max(box.getSize(new THREE.Vector3()).length(),1e-6),tol=diag*1e-6;const edges=new Map();
+ const add=(a,b,tri)=>{const ka=qkey(a,tol),kb=qkey(b,tol),key=ka<kb?`${ka}|${kb}`:`${kb}|${ka}`;let e=edges.get(key);if(!e){e={ka:ka<kb?ka:kb,kb:ka<kb?kb:ka,a:(ka<kb?a:b).clone(),b:(ka<kb?b:a).clone(),refs:[]};edges.set(key,e)}e.refs.push(tri)};
+ for(const t of tris){add(t.a,t.b,t);add(t.b,t.c,t);add(t.c,t.a,t)}
+ const centre=box.getCenter(new THREE.Vector3()),segments=[];const normalMode=activeMode()==='custom'?document.getElementById('customNormalMode')?.value:document.getElementById('torusNormalMode')?.value;
+ for(const e of edges.values()){
+   const groups=new Set(e.refs.map(r=>String(r.group)));if(groups.size<2)continue;
+   let n=new THREE.Vector3(),seed=e.refs[0].normal.clone();for(const r of e.refs){const rn=r.normal.clone();if(rn.dot(seed)<0)rn.negate();n.add(rn)}if(n.lengthSq()<1e-14)continue;n.normalize();const mid=e.a.clone().add(e.b).multiplyScalar(.5),radial=mid.clone().sub(centre);if(normalMode==='outward'&&n.dot(radial)<0)n.negate();if(normalMode==='inward'&&n.dot(radial)>0)n.negate();segments.push({...e,normal:n});
+ }
+ return segments;
+}
+function traceBoundaryChains(segments){
+ const adj=new Map();segments.forEach((s,i)=>{for(const k of [s.ka,s.kb]){let a=adj.get(k);if(!a){a=[];adj.set(k,a)}a.push(i)}});const used=new Uint8Array(segments.length),chains=[];
+ function walk(startEdge,startKey){const points=[],normals=[];let ei=startEdge,key=startKey,guard=0;while(ei!=null&&!used[ei]&&guard++<segments.length+2){const s=segments[ei];used[ei]=1;const forward=s.ka===key,from=forward?s.a:s.b,to=forward?s.b:s.a,nextKey=forward?s.kb:s.ka;if(!points.length)points.push(from.clone());points.push(to.clone());normals.push(s.normal.clone());const next=(adj.get(nextKey)||[]).find(j=>!used[j]);if(next==null)break;key=nextKey;ei=next}return{points,normals,closed:points.length>2&&points[0].distanceToSquared(points[points.length-1])<1e-12}}
+ for(const [key,list] of adj)if(list.length!==2)for(const ei of list)if(!used[ei])chains.push(walk(ei,key));for(let i=0;i<segments.length;i++)if(!used[i])chains.push(walk(i,segments[i].ka));return chains.filter(c=>c.points.length>1);
+}
+function sampleChain(chain,wanted){
+ const pts=chain.points,segLen=[];let total=0;for(let i=0;i<pts.length-1;i++){const l=pts[i].distanceTo(pts[i+1]);segLen.push(l);total+=l}if(total<=1e-9)return[];const closed=chain.closed;let count=closed?Math.max(1,Math.round(total/wanted)):Math.max(2,Math.floor(total/wanted)+1);const step=closed?total/count:total/(count-1),out=[];
+ for(let si=0;si<count;si++){let d=closed?si*step:Math.min(total,si*step),acc=0,idx=0;while(idx<segLen.length-1&&acc+segLen[idx]<d){acc+=segLen[idx];idx++}const l=Math.max(segLen[idx],1e-9),u=Math.max(0,Math.min(1,(d-acc)/l)),p=pts[idx].clone().lerp(pts[idx+1],u),tangent=pts[idx+1].clone().sub(pts[idx]).normalize(),normal=(chain.normals[idx]||chain.normals[Math.max(0,idx-1)]||new THREE.Vector3(0,1,0)).clone().normalize();out.push({point:p,normal,tangent,localRadius:step*.5,isFacegroupBoundary:true,surfaceNormal:normal.clone(),boundaryTangent:tangent.clone()})}return out;
+}
+function buildFacegroupBoundaryPlacements(){const segs=buildBoundarySegments();if(!segs.length)return[];const wanted=Math.max(Number(spacing?.value||.1),.001),chains=traceBoundaryChains(segs),out=[];for(const c of chains)out.push(...sampleChain(c,wanted));return out;}
+
+// Boundary-specific frame. The existing instance axis selector still determines which imported local axis maps to frame.normal.
+const previousNodeFrame=torusNodeFrame;
+torusNodeFrame=function(node){if(!node?.isFacegroupBoundary)return previousNodeFrame(node);const surface=node.surfaceNormal.clone().normalize(),t=node.boundaryTangent.clone().normalize();let target=surface.clone(),x=t.clone();if(alignment?.value==='along'){target.copy(t);x.copy(surface)}else if(alignment?.value==='across'){target.crossVectors(surface,t).normalize();x.copy(t)}x.addScaledVector(target,-x.dot(target));if(x.lengthSq()<1e-12){const h=Math.abs(target.y)<.9?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);x.crossVectors(h,target)}x.normalize();const y=new THREE.Vector3().crossVectors(target,x).normalize();x.copy(new THREE.Vector3().crossVectors(y,target).normalize());return{xAxis:x,yAxis:y,normal:target};};
+
+// Preserve Normal Offset as a surface-normal offset even when the alignment target is tangent/across.
+const previousTorusNodeData=torusInstanceDataForNode;
+torusInstanceDataForNode=function(node){const d=previousTorusNodeData(node);if(!d||!node?.isFacegroupBoundary||alignment?.value==='surface')return d;const pos=new THREE.Vector3(),q=new THREE.Quaternion(),sc=new THREE.Vector3();d.matrix.decompose(pos,q,sc);const off=Number(document.getElementById('torusNormalOffset')?.value||0),frame=torusNodeFrame(node);pos.copy(node.point).addScaledVector(node.surfaceNormal,off);d.matrix.compose(pos,q,sc);return d;};
+const previousCustomNodeMatrix=customPlacementMatrixForNode;
+customPlacementMatrixForNode=function(node){const m=previousCustomNodeMatrix(node);if(!m||!node?.isFacegroupBoundary||alignment?.value==='surface')return m;const pos=new THREE.Vector3(),q=new THREE.Quaternion(),sc=new THREE.Vector3();m.decompose(pos,q,sc);const off=Number(document.getElementById('customNormalOffset')?.value||0);pos.copy(node.point).addScaledVector(node.surfaceNormal,off);return m.compose(pos,q,sc);};
+
+async function withBoundaryPlacements(select,nativeGenerate){
+ const originalValue=select.value,originalBuilder=buildSharedNodePlacements;select.value='node';buildSharedNodePlacements=()=>buildFacegroupBoundaryPlacements();
+ try{const placements=buildFacegroupBoundaryPlacements();if(!placements.length){setStatus('No Nomad facegroup boundaries were detected in the source mesh');return;}setStatus(`Detected ${placements.length.toLocaleString()} evenly spaced facegroup-boundary placements…`);await nativeGenerate();setStatus(`Generated instances along Nomad facegroup boundaries • ${placements.length.toLocaleString()} placements • spacing ${Number(spacing.value).toFixed(3)}`)}finally{buildSharedNodePlacements=originalBuilder;select.value=originalValue;setTimeout(applyUI,0)}
+}
+const nativeTorusGenerate=generateFaceTorusResult;generateFaceTorusResult=async function(){const s=document.getElementById('torusPlacementMode');if(s?.value==='facegroupBoundary')return withBoundaryPlacements(s,nativeTorusGenerate);return nativeTorusGenerate();};
+const nativeCustomGenerate=generateCustomInstanceResult;generateCustomInstanceResult=async function(){const s=document.getElementById('customPlacementMode');if(s?.value==='facegroupBoundary')return withBoundaryPlacements(s,nativeCustomGenerate);return nativeCustomGenerate();};
+
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function settle(){applyUI();requestAnimationFrame(applyUI);setTimeout(applyUI,80);setTimeout(applyUI,200)}for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',settle);for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(stamp,180));requestAnimationFrame(settle);
+})();
