@@ -1,0 +1,52 @@
+
+// MeshUtilz v0.9.1-wip.6 — facegroup-boundary density stays on boundary curve
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.1-wip.6';
+function activeBoundary(select){return select?.value==='facegroupBoundary'}
+function densityInputFor(select){return select?.id==='customPlacementMode'?document.getElementById('customDensity'):document.getElementById('torusDensity')}
+function spacingMultiplier(level){
+  // Preserve the established -5..+5 density feel, but apply it only as 1D arc-length spacing.
+  const map={ '-5':8, '-4':4, '-3':2.5, '-2':1.6666667, '-1':1.25, '0':1, '1':0.8, '2':0.6, '3':0.4, '4':0.25, '5':0.125 };
+  return map[String(Math.max(-5,Math.min(5,Math.round(level))))] ?? 1;
+}
+async function boundaryDensityGuard(select,nativeGenerate){
+  if(!activeBoundary(select))return nativeGenerate();
+  const density=densityInputFor(select),spacing=document.getElementById('fgBoundarySpacing');
+  if(!density||!spacing)return nativeGenerate();
+  const originalDensity=density.value,originalSpacing=spacing.value;
+  const level=Number(originalDensity||0),base=Math.max(Number(originalSpacing||0.1),0.001),effective=Math.max(base*spacingMultiplier(level),0.000001);
+  // Critical fix: neutralise the legacy 2D/topology density pass. WIP5 will sample the boundary itself
+  // using the effective spacing below, so every added/removed placement remains on the seam polyline.
+  density.value='0';
+  spacing.value=String(effective);
+  try{
+    await nativeGenerate();
+    const label=level>0?`+${level}`:`${level}`;
+    if(typeof setStatus==='function')setStatus(`Facegroup boundary placement • density ${label} • effective spacing ${effective.toFixed(4)} • all instances constrained to boundary`);
+  }finally{
+    density.value=originalDensity;
+    spacing.value=originalSpacing;
+    const out=document.getElementById(density.id+'Out');if(out)out.value=level>0?`+${level}`:`${level}`;
+  }
+}
+const previousTorus=generateFaceTorusResult;
+generateFaceTorusResult=async function(){return boundaryDensityGuard(document.getElementById('torusPlacementMode'),previousTorus)};
+if(typeof generateCustomInstanceResult!=='undefined'){
+  const previousCustom=generateCustomInstanceResult;
+  generateCustomInstanceResult=async function(){return boundaryDensityGuard(document.getElementById('customPlacementMode'),previousCustom)};
+}
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`}}
+function refreshHint(){
+ for(const id of ['torusPlacementMode','customPlacementMode']){
+   const s=document.getElementById(id),d=densityInputFor(s),c=d?.closest('.control');if(!s||!d||!c)continue;
+   let note=c.querySelector('.muz-fg-density-note');
+   if(activeBoundary(s)){
+     if(!note){note=document.createElement('div');note.className='note muz-fg-density-note';note.style.marginTop='5px';note.textContent='Boundary mode: density changes spacing along the facegroup boundary only.';c.appendChild(note)}note.style.display='';
+   }else if(note)note.style.display='none';
+ }
+ stamp();
+}
+for(const id of ['torusPlacementMode','customPlacementMode','replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>setTimeout(refreshHint,0));
+for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(stamp,180));
+requestAnimationFrame(refreshHint);
+})();
