@@ -1,0 +1,128 @@
+
+// MeshUtilz v0.9.2-wip.1 — Facegroup Boundary -> native Nomad procedural Tube
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.2-wip.1';
+if(typeof THREE==='undefined'||typeof sourceRoot==='undefined')return;
+
+let nomTemplateBytes=null, nomTemplateName='';
+let sourcePrimitiveGroups=[];
+
+function stamp(){
+ document.title=`${PRODUCT} v${VERSION}`;
+ document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);
+ const av=document.querySelector('.about-version'); if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;
+ const title=document.querySelector('.title'); if(title)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];
+ bars.slice(1).forEach(x=>x.remove());
+ if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`;}
+}
+
+function parseGlbGroups(file){
+ if(!file||!file.name?.toLowerCase().endsWith('.glb')){sourcePrimitiveGroups=[];return;}
+ file.arrayBuffer().then(buf=>{try{
+   const dv=new DataView(buf); if(dv.getUint32(0,true)!==0x46546c67)return;
+   let off=12,json=null;
+   while(off+8<=buf.byteLength){const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true);off+=8;if(type===0x4e4f534a){json=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,off,len)).replace(/\0+$/,''));break;}off+=len;}
+   const groups=[];for(const mesh of json?.meshes||[])for(const prim of mesh.primitives||[])groups.push(prim?.extras?.nomad?.group??null);sourcePrimitiveGroups=groups;
+ }catch(e){console.warn('MeshUtilz NOM export: source group parse failed',e);sourcePrimitiveGroups=[];}});
+}
+try{fileInput?.addEventListener('change',()=>{const f=fileInput.files?.[0];if(f)parseGlbGroups(f)},true)}catch{}
+
+function readU64(dv,o){return Number(dv.getBigUint64(o,true))}
+function writeU64(dv,o,v){dv.setBigUint64(o,BigInt(v),true)}
+function parseNom(bytes){
+ if(bytes.length<72||new TextDecoder().decode(bytes.slice(0,11))!=='Nomad Sculp'){
+   // full magic is 12 bytes: "Nomad Sculpt"
+ }
+ const magic=new TextDecoder().decode(bytes.slice(0,12));
+ if(magic!=='Nomad Sculpt')throw new Error('Not a Nomad Sculpt NOM file');
+ const dv=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),jsonOffset=readU64(dv,24),jsonLength=readU64(dv,32),binOffset=readU64(dv,40),binLength=readU64(dv,48);
+ if(jsonOffset+jsonLength>bytes.length||binOffset+binLength>bytes.length)throw new Error('Invalid NOM container offsets');
+ const json=JSON.parse(new TextDecoder().decode(bytes.slice(jsonOffset,jsonOffset+jsonLength)));
+ return{jsonOffset,jsonLength,binOffset,binLength,json};
+}
+function firstTubeMesh(project){return project?.meshes?.find(m=>m?.mesh_type==='tube'&&m?.config_tube)||null}
+
+function qkey(p,t){return `${Math.round(p.x/t)},${Math.round(p.y/t)},${Math.round(p.z/t)}`}
+function objGroup(obj,fallback){
+ const vals=[obj?.userData?.nomad?.group,obj?.geometry?.userData?.nomad?.group,obj?.userData?.extras?.nomad?.group,obj?.geometry?.userData?.extras?.nomad?.group];
+ for(const v of vals)if(v!==undefined&&v!==null)return v;return fallback;
+}
+function groupedTriangles(){
+ if(!sourceRoot)return[];sourceRoot.updateMatrixWorld(true);const tris=[];let primitiveIndex=0;
+ sourceRoot.traverse(obj=>{
+   if(!obj.isMesh||!obj.geometry?.attributes?.position)return;
+   const g=obj.geometry,p=g.getAttribute('position'),idx=g.index,groups=g.groups?.length?g.groups:[{start:0,count:idx?idx.count:p.count}];
+   for(let gi=0;gi<groups.length;gi++){
+     const gr=groups[gi],gid=objGroup(obj,sourcePrimitiveGroups[primitiveIndex+gi]??primitiveIndex+gi),start=gr.start||0,end=Math.min(start+(gr.count||0),idx?idx.count:p.count);
+     for(let i=start;i+2<end;i+=3){const ids=[idx?idx.getX(i):i,idx?idx.getX(i+1):i+1,idx?idx.getX(i+2):i+2],v=ids.map(k=>new THREE.Vector3(p.getX(k),p.getY(k),p.getZ(k)).applyMatrix4(obj.matrixWorld));const n=v[1].clone().sub(v[0]).cross(v[2].clone().sub(v[0]));if(n.lengthSq()>1e-18)tris.push({v,normal:n.normalize(),group:gid});}
+   }
+   primitiveIndex+=Math.max(groups.length,1);
+ });return tris;
+}
+function boundarySegments(){
+ const tris=groupedTriangles();if(!tris.length)return[];const box=new THREE.Box3();tris.forEach(t=>t.v.forEach(p=>box.expandByPoint(p)));const tol=Math.max(box.getSize(new THREE.Vector3()).length(),1e-6)*1e-6,edges=new Map();
+ const add=(a,b,t)=>{const ka=qkey(a,tol),kb=qkey(b,tol),key=ka<kb?`${ka}|${kb}`:`${kb}|${ka}`;let e=edges.get(key);if(!e){const f=ka<kb;e={ka:f?ka:kb,kb:f?kb:ka,a:(f?a:b).clone(),b:(f?b:a).clone(),refs:[]};edges.set(key,e)}e.refs.push(t)};
+ for(const t of tris){add(t.v[0],t.v[1],t);add(t.v[1],t.v[2],t);add(t.v[2],t.v[0],t)}
+ const out=[];for(const e of edges.values()){
+   if(new Set(e.refs.map(r=>String(r.group))).size<2)continue;
+   let n=new THREE.Vector3(),seed=e.refs[0].normal.clone();for(const r of e.refs){const rn=r.normal.clone();if(rn.dot(seed)<0)rn.negate();n.add(rn)}if(n.lengthSq()>1e-14)out.push({...e,normal:n.normalize()});
+ }return out;
+}
+function traceChains(segments){
+ const adj=new Map();segments.forEach((s,i)=>{for(const k of [s.ka,s.kb]){let a=adj.get(k);if(!a){a=[];adj.set(k,a)}a.push(i)}});const used=new Uint8Array(segments.length),chains=[];
+ function walk(seed,key){const points=[],normals=[];let ei=seed,guard=0;while(ei!=null&&!used[ei]&&guard++<segments.length+3){const s=segments[ei];used[ei]=1;const f=s.ka===key,a=f?s.a:s.b,b=f?s.b:s.a,nextKey=f?s.kb:s.ka;if(!points.length)points.push(a.clone());points.push(b.clone());normals.push(s.normal.clone());const next=(adj.get(nextKey)||[]).find(j=>!used[j]);if(next==null)break;ei=next;key=nextKey;}const closed=points.length>2&&points[0].distanceToSquared(points[points.length-1])<1e-10;if(closed)points.pop();return{points,normals,closed};}
+ for(const [key,list] of adj)if(list.length!==2)for(const ei of list)if(!used[ei])chains.push(walk(ei,key));for(let i=0;i<segments.length;i++)if(!used[i])chains.push(walk(i,segments[i].ka));return chains.filter(c=>c.points.length>=2);
+}
+function chainLength(c){let s=0;for(let i=0;i<c.points.length-1;i++)s+=c.points[i].distanceTo(c.points[i+1]);if(c.closed&&c.points.length>2)s+=c.points[c.points.length-1].distanceTo(c.points[0]);return s}
+function pointSegDistance(p,a,b){const ab=b.clone().sub(a),d=ab.lengthSq();if(d<1e-18)return p.distanceTo(a);const t=Math.max(0,Math.min(1,p.clone().sub(a).dot(ab)/d));return p.distanceTo(a.clone().addScaledVector(ab,t))}
+function rdp(points,tol){
+ if(points.length<=2)return points.slice();let max=-1,idx=-1;for(let i=1;i<points.length-1;i++){const d=pointSegDistance(points[i],points[0],points[points.length-1]);if(d>max){max=d;idx=i}}
+ if(max>tol){const a=rdp(points.slice(0,idx+1),tol),b=rdp(points.slice(idx),tol);return a.slice(0,-1).concat(b)}return[points[0],points[points.length-1]];
+}
+function simplifyClosed(points,detail){
+ if(points.length<=8||detail>=99.5)return points.map(p=>p.clone());const box=new THREE.Box3().setFromPoints(points),diag=Math.max(box.getSize(new THREE.Vector3()).length(),1e-9),f=Math.max(0,Math.min(1,(100-detail)/100)),tol=diag*f*f*0.035;
+ // Break the ring at the point farthest from point 0, simplify both arcs, then rejoin.
+ let far=1,farD=0;for(let i=1;i<points.length;i++){const d=points[0].distanceToSquared(points[i]);if(d>farD){farD=d;far=i}}
+ const a=rdp(points.slice(0,far+1),tol),b=rdp(points.slice(far).concat(points.slice(0,1)),tol);const out=a.slice(0,-1).concat(b.slice(0,-1));return out.length>=4?out:points.filter((_,i)=>i%Math.max(1,Math.floor(points.length/4))===0).slice(0,4);
+}
+function averageNormal(chain){const n=new THREE.Vector3();for(const x of chain.normals||[])n.add(x);if(n.lengthSq()<1e-12)n.set(0,1,0);return n.normalize()}
+function initialFrameNormal(points,surfaceNormal){
+ if(points.length<2)return[1,0,0];const tangent=points[1].clone().sub(points[0]).normalize();let n=surfaceNormal.clone();n.addScaledVector(tangent,-n.dot(tangent));if(n.lengthSq()<1e-12){const h=Math.abs(tangent.y)<.9?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);n.crossVectors(tangent,h)}return n.normalize().toArray();
+}
+
+function rebuildNom(templateBytes,project){
+ const parsed=parseNom(templateBytes),encoder=new TextEncoder(),jsonBytes=encoder.encode(JSON.stringify(project,null,4)),newBinOffset=(parsed.jsonOffset+jsonBytes.length+7)&~7,bin=templateBytes.slice(parsed.binOffset,parsed.binOffset+parsed.binLength),size=newBinOffset+bin.length,out=new Uint8Array(size);
+ out.set(templateBytes.slice(0,parsed.jsonOffset),0);out.set(jsonBytes,parsed.jsonOffset);out.set(bin,newBinOffset);
+ const dv=new DataView(out.buffer);writeU64(dv,16,size);writeU64(dv,24,parsed.jsonOffset);writeU64(dv,32,jsonBytes.length);writeU64(dv,40,newBinOffset);writeU64(dv,48,bin.length);return out;
+}
+function saveBytes(bytes,name){const blob=new Blob([bytes],{type:'application/octet-stream'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+
+const tubeSection=document.getElementById('fgBoundaryTubeSection')||document.querySelector('.panel,.sidebar,.controls');
+let nomBox=document.getElementById('muzNomTubeExport');
+if(!nomBox&&tubeSection){
+ nomBox=document.createElement('div');nomBox.id='muzNomTubeExport';nomBox.style.cssText='margin-top:14px;padding-top:12px;border-top:1px solid #3a404a';nomBox.innerHTML=`
+   <div style="font-weight:650;margin-bottom:8px">NOMAD PROCEDURAL EXPORT</div>
+   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="file-button" for="muzNomTemplateFile">Load Tube NOM template</label><input id="muzNomTemplateFile" type="file" accept=".nom" style="display:none" /></div>
+   <p id="muzNomTemplateStatus" class="note">Load a known-good Nomad procedural Tube .nom file once for this WIP session.</p>
+   <div class="control"><label for="muzNomPathDetail">Path detail</label><output id="muzNomPathDetailOut">70%</output><input id="muzNomPathDetail" type="range" min="10" max="100" value="70" step="5" /></div>
+   <div class="control"><label for="muzNomRadius">Tube radius</label><input id="muzNomRadius" type="number" min="0.001" step="0.01" value="0.05" inputmode="decimal" /></div>
+   <button id="muzExportNomTube" type="button">Export procedural Tube .NOM</button>
+   <p class="note">WIP1 exports the longest detected closed facegroup boundary as one editable Nomad Tube. The template's profile/material are preserved.</p>`;
+ const body=tubeSection.querySelector?.('.mlr10-body')||tubeSection;body.appendChild(nomBox);
+}
+const templateInput=document.getElementById('muzNomTemplateFile'),templateStatus=document.getElementById('muzNomTemplateStatus'),detail=document.getElementById('muzNomPathDetail'),detailOut=document.getElementById('muzNomPathDetailOut'),radiusInput=document.getElementById('muzNomRadius'),exportNom=document.getElementById('muzExportNomTube');
+detail?.addEventListener('input',()=>{if(detailOut)detailOut.value=`${detail.value}%`});
+templateInput?.addEventListener('change',async()=>{const f=templateInput.files?.[0];templateInput.value='';if(!f)return;try{const bytes=new Uint8Array(await f.arrayBuffer()),parsed=parseNom(bytes),tube=firstTubeMesh(parsed.json);if(!tube)throw new Error('No procedural Tube found in template');nomTemplateBytes=bytes;nomTemplateName=f.name;if(templateStatus)templateStatus.textContent=`Template ready: ${f.name} • procedural Tube detected`;setStatus?.('Nomad procedural Tube template loaded');}catch(e){nomTemplateBytes=null;if(templateStatus)templateStatus.textContent=`Template rejected: ${e.message||e}`;}});
+
+exportNom?.addEventListener('click',()=>{try{
+ if(!nomTemplateBytes)throw new Error('Load a procedural Tube NOM template first');const chains=traceChains(boundarySegments()).filter(c=>c.closed);if(!chains.length)throw new Error('No closed Nomad facegroup boundary detected');chains.sort((a,b)=>chainLength(b)-chainLength(a));const chain=chains[0],raw=chain.points,simplified=simplifyClosed(raw,Number(detail?.value||70)),parsed=parseNom(nomTemplateBytes),project=structuredClone(parsed.json),mesh=firstTubeMesh(project);if(!mesh)throw new Error('Template Tube config missing');const cfg=mesh.config_tube,n=simplified.length,r=Math.max(Number(radiusInput?.value||0.05),0.0001),surfN=averageNormal(chain);
+ cfg.curve.points=simplified.map(p=>[p.x,p.y,p.z]);cfg.curve.sharps=Array(n).fill(0);cfg.curve.closed=true;cfg.curve.type='catmull-rom';cfg.curve.normal0=initialFrameNormal(simplified,surfN);cfg.radiuses=Array(n).fill(r);cfg.rotates=Array(n).fill(0);cfg.spirals=Array(n).fill(0);cfg.cap_start=false;cfg.cap_end=false;cfg.subdiv_y=Math.max(8,n*4);mesh.count_vertex=mesh.count_vertex;mesh.count_face=mesh.count_face;
+ if(project.scene?.[0])project.scene[0].name='MeshUtilz Boundary Tube';
+ try{if(project.settings&&typeof project.settings==='object'&&'project_name' in project.settings)project.settings.project_name='MeshUtilz Boundary Tube'}catch{}
+ const out=rebuildNom(nomTemplateBytes,project),base=(typeof sourceName!=='undefined'&&sourceName?sourceName:'meshutilz').replace(/\.[^.]+$/,'');saveBytes(out,`${base}-facegroup-boundary-tube.nom`);setStatus?.(`Exported native Nomad procedural Tube • ${raw.length} boundary vertices → ${n} control points • radius ${r}`);stamp();
+ }catch(e){console.error(e);setStatus?.(`NOM export failed: ${e.message||e}`);alert(`NOM export failed: ${e.message||e}`)}});
+
+function showNomUI(){const mode=document.getElementById('replaceMode')?.value||document.getElementById('mlrMode')?.value||'';if(nomBox)nomBox.style.display=mode==='facegroupBoundaryTube'?'':'none';stamp()}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',()=>setTimeout(showNomUI,0));for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(stamp,180));requestAnimationFrame(()=>{showNomUI();stamp()});setTimeout(stamp,250);
+})();
