@@ -1,0 +1,18 @@
+
+// MeshUtilz v0.9.1-wip.6 — final version/footer authority
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.1-wip.6';
+function stamp(){
+ document.title=`${PRODUCT} v${VERSION}`;
+ document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);
+ const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;
+ const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];
+ bars.slice(1).forEach(x=>x.remove());
+ if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`;}
+}
+function settle(){stamp();requestAnimationFrame(stamp);setTimeout(stamp,30);setTimeout(stamp,180);}
+for(const id of ['replaceMode','mlrMode'])document.getElementById(id)?.addEventListener('change',settle);
+for(const id of ['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(stamp,200));
+requestAnimationFrame(settle);
+})();
