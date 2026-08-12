@@ -1,0 +1,17 @@
+
+// MeshUtilz v0.9.2-wip.14 — production export choice: independent procedural Tubes / linked Nomad instances
+(function(){
+const VERSION='0.9.2-wip.14',PRODUCT='MeshUtilz';
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const s=bars[0].querySelectorAll('span');if(s.length)s[s.length-1].textContent=`v${VERSION}`}}
+function install(){const box=document.getElementById('muzNomTubeExport');if(!box)return false;const proof=document.getElementById('muzNomInstanceProof');const oldRow=proof?.closest('.control');if(oldRow)oldRow.remove();if(document.getElementById('muzNomExportMode'))return true;
+ const wrap=document.createElement('div');wrap.className='control';wrap.innerHTML='<label for="muzNomExportMode">Nomad procedural export</label><select id="muzNomExportMode"><option value="independent">Independent Tubes</option><option value="linked">Linked Instances</option></select><div id="muzNomExportModeHint" style="font-size:11px;opacity:.72;margin-top:5px;line-height:1.3">Each boundary keeps its own procedural Tube shape.</div>';
+ const btn=document.getElementById('muzExportNomTube');if(btn)box.insertBefore(wrap,btn);else box.appendChild(wrap);const sel=wrap.querySelector('select'),hint=wrap.querySelector('#muzNomExportModeHint');sel.addEventListener('change',()=>{hint.textContent=sel.value==='linked'?'One master Tube is reused at every detected boundary centre. Editing the master in Nomad updates all linked instances.':'Each boundary keeps its own procedural Tube shape.';window.__muNomadExportMode=sel.value;setStatus?.(sel.value==='linked'?'Nomad export: Linked Instances':'Nomad export: Independent procedural Tubes')});window.__muNomadExportMode='independent';return true}
+// WIP13's proven instance converter is retained. This bridge makes its hidden proof toggle follow the proper selector at export time.
+function sync(){const sel=document.getElementById('muzNomExportMode'),proof=document.getElementById('muzNomInstanceProof');if(proof)proof.checked=(sel?.value||window.__muNomadExportMode)==='linked'}
+function settle(){install();sync();stamp()}requestAnimationFrame(()=>{settle();setTimeout(settle,120);setTimeout(settle,400)});
+try{fileInput?.addEventListener('change',()=>{setTimeout(settle,30);setTimeout(settle,250)})}catch{};
+for(const id of['replaceMode','mlrMode','generateBtn','mlrGenerate','mlrModeBtn'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(settle,100));
+// Capture phase guarantees WIP13 sees the selected mode before its Blob wrapper runs.
+document.getElementById('muzExportNomTube')?.addEventListener('click',()=>{sync();const linked=(document.getElementById('muzNomExportMode')?.value==='linked');setStatus?.(linked?'Exporting linked procedural Tube instances…':'Exporting independent procedural boundary Tubes…');setTimeout(stamp,120)},true);
+stamp();
+})();
