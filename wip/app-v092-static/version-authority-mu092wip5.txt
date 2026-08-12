@@ -1,0 +1,17 @@
+
+// MeshUtilz v0.9.2-wip.5 — FINAL version authority (must load after legacy wip3 authority)
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.2-wip.5';
+function stamp(){
+ document.title=`${PRODUCT} v${VERSION}`;
+ document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);
+ const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;
+ const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];
+ if(bars.length){bars.slice(1).forEach(x=>x.remove());const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`;}
+}
+function settle(){stamp();requestAnimationFrame(stamp);setTimeout(stamp,30);setTimeout(stamp,150);setTimeout(stamp,400);}
+try{fileInput?.addEventListener('change',settle)}catch{}
+for(const id of ['replaceMode','mlrMode','generateBtn','generate','buildBtn','mlrGenerate','mlrModeBtn']){const el=document.getElementById(id);if(el)el.addEventListener(el.tagName==='SELECT'?'change':'click',settle);}
+window.addEventListener('load',settle);settle();
+})();
