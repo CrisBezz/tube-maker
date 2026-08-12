@@ -1,0 +1,28 @@
+
+// MeshUtilz v0.9.2-wip.3 — post-load UI/version authority
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.2-wip.3';
+function stamp(){
+ document.title=`${PRODUCT} v${VERSION}`;
+ document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);
+ const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;
+ const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());
+ if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`;}
+}
+function ensureBoundaryMode(){
+ const native=document.getElementById('replaceMode'), top=document.getElementById('mlrMode');
+ for(const sel of [native,top]) if(sel && ![...sel.options].some(o=>o.value==='facegroupBoundaryTube')) sel.add(new Option('Facegroup boundary tube','facegroupBoundaryTube'));
+ if(native&&top&&[...top.options].some(o=>o.value===native.value))top.value=native.value;
+}
+function authoritative(){ensureBoundaryMode();stamp();}
+function settle(){authoritative();requestAnimationFrame(authoritative);setTimeout(authoritative,30);setTimeout(authoritative,120);setTimeout(authoritative,350);}
+// Base source-load handlers re-run old UI/version code after file selection. Run LAST and restore current authority.
+try{fileInput?.addEventListener('change',settle)}catch{}
+for(const id of ['replaceMode','mlrMode','generateBtn','generate','buildBtn','mlrGenerate']){
+ const el=document.getElementById(id); if(!el)continue;
+ el.addEventListener(el.tagName==='SELECT'?'change':'click',settle);
+}
+window.addEventListener('load',settle);
+settle();
+})();
