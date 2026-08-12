@@ -1,0 +1,37 @@
+
+// MeshUtilz v0.9.2-wip.7 — clean multi-tube NOM export with unique binary backing per generated Tube
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.2-wip.7';
+if(typeof THREE==='undefined')return;
+const clone=v=>typeof structuredClone==='function'?structuredClone(v):JSON.parse(JSON.stringify(v));
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const t=document.querySelector('.title');if(t)t.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const s=bars[0].querySelectorAll('span');if(s.length)s[s.length-1].textContent=`v${VERSION}`}}
+function u64(dv,o){return Number(dv.getBigUint64(o,true))}function w64(dv,o,v){dv.setBigUint64(o,BigInt(v),true)}
+function parseNom(bytes){const magic=new TextDecoder().decode(bytes.slice(0,12));if(magic!=='Nomad Sculpt')throw new Error('Not a Nomad Sculpt NOM file');const dv=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),jo=u64(dv,24),jl=u64(dv,32),bo=u64(dv,40),bl=u64(dv,48);return{jo,jl,bo,bl,json:JSON.parse(new TextDecoder().decode(bytes.slice(jo,jo+jl))),bin:bytes.slice(bo,bo+bl)}}
+function shiftOffsets(obj,delta){if(!obj||typeof obj!=='object')return; if(Array.isArray(obj)){for(const v of obj)shiftOffsets(v,delta);return;} if(typeof obj.offset==='number'&&typeof obj.length==='number')obj.offset+=delta; for(const [k,v] of Object.entries(obj))if(k!=='offset')shiftOffsets(v,delta);}
+function rebuildWithBins(templateBytes,project,bins){const p=parseNom(templateBytes),jb=new TextEncoder().encode(JSON.stringify(project,null,4)),bo=(p.jo+jb.length+7)&~7,totalBin=bins.reduce((s,b)=>s+b.length,0),out=new Uint8Array(bo+totalBin);out.set(templateBytes.slice(0,p.jo));out.set(jb,p.jo);let off=bo;for(const b of bins){out.set(b,off);off+=b.length}const dv=new DataView(out.buffer);w64(dv,16,out.length);w64(dv,24,p.jo);w64(dv,32,jb.length);w64(dv,40,bo);w64(dv,48,totalBin);return out}
+function save(bytes,name){const url=URL.createObjectURL(new Blob([bytes],{type:'application/octet-stream'})),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+
+// Reuse WIP6 detection/helpers where available.
+const baseBoundaryChains=typeof boundaryChains==='function'?boundaryChains:null;
+const baseLengthOf=typeof lengthOf==='function'?lengthOf:null;
+const baseResample=typeof resampleClosed==='function'?resampleClosed:null;
+const baseFrame=typeof frameNormal==='function'?frameNormal:null;
+const baseMakeProfiles=typeof makeProfiles==='function'?makeProfiles:null;
+function localFirstTube(j){return j?.meshes?.find(m=>m?.mesh_type==='tube'&&m?.config_tube)||null}
+function localFirstTubeIndex(j){return j?.meshes?.findIndex(m=>m?.mesh_type==='tube'&&m?.config_tube)??-1}
+function configure(mesh,chain,n,r){const cfg=mesh.config_tube,pts=baseResample(chain.points,n),profiles=baseMakeProfiles(cfg.profiles,n);cfg.curve.points=pts.map(p=>[p.x,p.y,p.z]);cfg.curve.sharps=Array(n).fill(0);cfg.curve.closed=true;cfg.curve.type=cfg.curve.type||'catmull-rom';cfg.curve.normal0=baseFrame(pts);cfg.radiuses=Array(n).fill(r);cfg.rotates=Array(n).fill(0);cfg.spirals=Array(n).fill(0);if(profiles.length===n)cfg.profiles=profiles;cfg.cap_start=false;cfg.cap_end=false;cfg.subdiv_y=Math.max(8,n*4);return mesh}
+function identityNode(name,meshIndex,hid){return{name,matrix:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],transform_reset:false,selected:hid===0,selected_main:hid===0,mesh:meshIndex,node_collapse:true,lock:false,pivot_delta:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],children:[],visible:true,hid,mask_delta:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}}
+
+let cleanTemplateBytes=null;
+const templateInput=document.getElementById('muzNomTemplateFile'),status=document.getElementById('muzNomTemplateStatus'),pointCount=document.getElementById('muzNomPointCount'),radius=document.getElementById('muzNomRadius');
+templateInput?.addEventListener('change',async()=>{const f=templateInput.files?.[0];if(!f)return;try{const b=new Uint8Array(await f.arrayBuffer()),p=parseNom(b);if(!localFirstTube(p.json))throw new Error('No procedural Tube found');cleanTemplateBytes=b;if(status)status.textContent=`Template ready: ${f.name} • unique-cache multi-tube export`;setStatus?.('Nomad Tube template loaded • WIP7 clean export ready');stamp()}catch(e){cleanTemplateBytes=null;if(status)status.textContent=`Template rejected: ${e.message||e}`}},true);
+
+let btn=document.getElementById('muzExportNomTube');if(btn){const fresh=btn.cloneNode(true);fresh.textContent='Export all procedural Tubes .NOM';btn.replaceWith(fresh);btn=fresh;}
+btn?.addEventListener('click',()=>{try{
+ if(!cleanTemplateBytes)throw new Error('Load a procedural Tube NOM template first');if(!baseBoundaryChains||!baseResample||!baseFrame||!baseMakeProfiles)throw new Error('Boundary Tube helpers unavailable');const chains=baseBoundaryChains();if(!chains.length)throw new Error('No closed facegroup boundaries detected');chains.sort((a,b)=>baseLengthOf(b)-baseLengthOf(a));const parsed=parseNom(cleanTemplateBytes),project=clone(parsed.json),donor=localFirstTube(project),tubeIndex=localFirstTubeIndex(project);if(!donor||tubeIndex<0)throw new Error('Template Tube config missing');const n=Math.max(4,Math.min(64,Number(pointCount?.value||24))),r=Math.max(Number(radius?.value||0.05),0.0001),generatedMeshes=[],generatedScene=[],bins=[];
+ chains.forEach((chain,i)=>{const mesh=configure(clone(donor),chain,n,r);const delta=i*parsed.bin.length;shiftOffsets(mesh,delta);generatedMeshes.push(mesh);generatedScene.push(identityNode(`MeshUtilz Boundary Tube ${i+1}`,i,i));bins.push(parsed.bin.slice())});
+ project.meshes=generatedMeshes;project.scene=generatedScene;if(Array.isArray(project.groups))project.groups=[];if('history'in project)project.history={};if('history_bank'in project)project.history_bank=[];try{if(project.settings&&'project_name'in project.settings)project.settings.project_name='MeshUtilz Boundary Tubes'}catch{}
+ const out=rebuildWithBins(cleanTemplateBytes,project,bins),base=(typeof sourceName!=='undefined'&&sourceName?sourceName:'meshutilz').replace(/\.[^.]+$/,'');save(out,`${base}-facegroup-boundary-tubes-clean-${chains.length}x-${n}pts.nom`);setStatus?.(`Exported ${chains.length} native Nomad procedural Tubes • unique binary cache per Tube • donor removed`);stamp();
+ }catch(err){console.error(err);setStatus?.(`NOM export failed: ${err.message||err}`);alert(`NOM export failed: ${err.message||err}`)}});
+function settle(){stamp()}try{fileInput?.addEventListener('change',()=>setTimeout(settle,150))}catch{};for(const id of['replaceMode','mlrMode','generateBtn','mlrGenerate','mlrModeBtn'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(settle,100));settle();
+})();
