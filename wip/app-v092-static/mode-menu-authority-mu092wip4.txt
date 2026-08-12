@@ -1,0 +1,47 @@
+
+// MeshUtilz v0.9.2-wip.4 — authoritative visible MODE menu rebuild
+(function(){
+const PRODUCT='MeshUtilz', VERSION='0.9.2-wip.4';
+function stamp(){
+ document.title=`${PRODUCT} v${VERSION}`;
+ document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);
+ const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;
+ const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());
+ if(bars[0]){const sp=bars[0].querySelectorAll('span');if(sp.length)sp[sp.length-1].textContent=`v${VERSION}`;}
+}
+function ensureOption(sel){if(sel&&![...sel.options].some(o=>o.value==='facegroupBoundaryTube'))sel.add(new Option('Facegroup boundary tube','facegroupBoundaryTube'));}
+function syncSelectors(){
+ const native=document.getElementById('replaceMode'), hidden=document.getElementById('mlrMode');
+ ensureOption(native);ensureOption(hidden);
+ if(native&&hidden&&[...hidden.options].some(o=>o.value===native.value))hidden.value=native.value;
+}
+function rebuildVisibleModeMenu(){
+ syncSelectors();
+ const hidden=document.getElementById('mlrMode'), list=document.getElementById('mlrModeList');
+ if(!hidden||!list)return;
+ list.innerHTML='';
+ for(const opt of [...hidden.options]){
+   const b=document.createElement('button');b.type='button';b.textContent=(opt.textContent||'').trim();b.dataset.value=opt.value;
+   if(opt.value===hidden.value)b.classList.add('is-active');
+   b.addEventListener('click',()=>{
+     hidden.value=opt.value;
+     hidden.dispatchEvent(new Event('change',{bubbles:true}));
+     const native=document.getElementById('replaceMode');
+     if(native&&native.value!==opt.value){native.value=opt.value;native.dispatchEvent(new Event('change',{bubbles:true}));}
+     rebuildVisibleModeMenu();
+     const pop=list.closest('.mlr-modepop');if(pop)pop.hidden=true;
+     setTimeout(()=>{rebuildVisibleModeMenu();stamp()},0);
+   });
+   list.appendChild(b);
+ }
+ stamp();
+}
+function settle(){rebuildVisibleModeMenu();requestAnimationFrame(rebuildVisibleModeMenu);setTimeout(rebuildVisibleModeMenu,50);setTimeout(rebuildVisibleModeMenu,180);}
+const modeBtn=document.getElementById('mlrModeBtn');
+if(modeBtn)modeBtn.addEventListener('click',()=>requestAnimationFrame(rebuildVisibleModeMenu),true);
+for(const id of ['mlrMode','replaceMode'])document.getElementById(id)?.addEventListener('change',settle);
+try{fileInput?.addEventListener('change',settle)}catch{}
+window.addEventListener('load',settle);
+settle();
+})();
