@@ -1,0 +1,38 @@
+
+// MeshUtilz v0.9.2-wip.25 — final authority repair: prevent WIP21 replacing export button and keep it enabled
+(function(){
+const VERSION='0.9.2-wip.25',PRODUCT='MeshUtilz';
+function stamp(){
+ document.title=`${PRODUCT} v${VERSION}`;
+ document.querySelectorAll('.version').forEach(x=>{const v=`v${VERSION}`;if(x.textContent!==v)x.textContent=v});
+ const av=document.querySelector('.about-version');if(av){const v=`${PRODUCT} · Version ${VERSION}`;if(av.textContent!==v)av.textContent=v}
+ const title=document.querySelector('.title');if(title&&title.textContent!==PRODUCT)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());
+ if(bars[0]){const s=bars[0].querySelectorAll('span');if(s.length){const v=`v${VERSION}`;if(s[s.length-1].textContent!==v)s[s.length-1].textContent=v}}
+}
+function hasLive(){const x=window.__muLiveNomObject;return !!(x?.parsed&&x?.mesh&&x?.node)}
+function hasTransforms(){const a=window.__muLiveAuthoritativeTransforms;return Array.isArray(a)&&a.some(x=>Array.isArray(x?.matrix)&&x.matrix.length===16)}
+function ownButton(){
+ let old=document.getElementById('muzExportLiveNom');if(!old)return null;
+ // Mark it as already handled by every older installer so WIP21 will not clone/replace it again.
+ if(!old.dataset.w25final){
+   const btn=old.cloneNode(true);btn.dataset.w25='1';btn.dataset.w25final='1';btn.dataset.w21='1';btn.dataset.w21bound='1';btn.textContent='Export linked instances .NOM';old.replaceWith(btn);old=btn;
+   btn.addEventListener('click',(ev)=>{
+     // WIP25 direct exporter is installed on its earlier owned button. Re-create a click on that logic by dispatching custom event.
+     ev.stopImmediatePropagation();
+     try{window.__muW25DirectExport?.()}catch(e){alert(e.message||e);setStatus?.('Live NOM export failed: '+(e.message||e))}
+     stamp();
+   },true);
+ }
+ old.disabled=!hasLive();
+ return old;
+}
+function settle(){ownButton();stamp()}
+// Persistent authority: older delayed modules may still try to alter footer/button state after mode changes.
+const observer=new MutationObserver(()=>queueMicrotask(settle));
+observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['disabled']});
+for(const id of['muzLiveNomFile','muzUseLiveNom','generateBtn','generate','buildBtn','mlrGenerate','replaceMode','mlrMode']){
+ const e=document.getElementById(id);if(e){e.addEventListener('click',()=>setTimeout(settle,20),true);e.addEventListener('change',()=>{setTimeout(settle,30);setTimeout(settle,260)},true)}
+}
+requestAnimationFrame(()=>{settle();setTimeout(settle,220);setTimeout(settle,700)});
+})();
