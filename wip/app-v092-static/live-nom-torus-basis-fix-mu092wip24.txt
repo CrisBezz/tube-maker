@@ -1,0 +1,11 @@
+
+// MeshUtilz v0.9.2-wip.24 — Torus procedural-basis fidelity fix
+(function(){
+const VERSION='0.9.2-wip.24',PRODUCT='MeshUtilz';
+function stamp(){document.title=`${PRODUCT} v${VERSION}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${VERSION}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${PRODUCT} · Version ${VERSION}`;const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const s=bars[0].querySelectorAll('span');if(s.length)s[s.length-1].textContent=`v${VERSION}`}}
+function liveKind(){return String(window.__muLiveNomObject?.kind||'').toUpperCase()}
+function corrected(list){if(liveKind()!=='TORUS')return list;const c=new THREE.Matrix4().makeRotationX(-Math.PI/2),m=new THREE.Matrix4(),out=[];for(const tr of list||[]){if(!Array.isArray(tr?.matrix)||tr.matrix.length!==16)continue;m.fromArray(tr.matrix);m.multiply(c);const p=new THREE.Vector3(),q=new THREE.Quaternion(),s=new THREE.Vector3();m.decompose(p,q,s);out.push({position:p.clone(),quaternion:q.clone(),scale:s.clone(),matrix:m.toArray()})}return out}
+function applyForExport(){const raw=Array.isArray(window.__muLiveAuthoritativeTransforms)?window.__muLiveAuthoritativeTransforms:[];if(!raw.length)return;window.__muLiveAuthoritativeTransforms=corrected(raw);setStatus?.(`WIP24: ${raw.length} Torus transforms corrected for Nomad procedural local basis`);stamp();setTimeout(()=>{window.__muLiveAuthoritativeTransforms=raw;stamp()},0)}
+function bind(){const exp=document.getElementById('muzExportLiveNom');if(exp&&!exp.dataset.w24){exp.dataset.w24='1';exp.addEventListener('click',()=>applyForExport(),true)}for(const id of['generateBtn','generate','buildBtn','mlrGenerate'])document.getElementById(id)?.addEventListener('click',()=>setTimeout(stamp,450));}
+requestAnimationFrame(()=>{bind();stamp();setTimeout(stamp,650)});
+})();
