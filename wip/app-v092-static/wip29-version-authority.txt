@@ -1,0 +1,8 @@
+
+// MeshUtilz v0.9.2-wip.29 — rollback authority; WIP26 functionality unchanged
+(function(){
+const V='0.9.2-wip.29',P='MeshUtilz';
+function stamp(){document.title=`${P} v${V}`;document.querySelectorAll('.version').forEach(x=>x.textContent=`v${V}`);const av=document.querySelector('.about-version');if(av)av.textContent=`${P} · Version ${V}`;const title=document.querySelector('.title');if(title)title.textContent=P;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(x=>x.remove());if(bars[0]){const s=bars[0].querySelectorAll('span');if(s.length)s[s.length-1].textContent=`v${V}`}}
+for(const id of['muzLiveNomFile','muzUseLiveNom','generateBtn','generate','buildBtn','mlrGenerate','replaceMode','mlrMode','muzExportLiveNom']){const e=document.getElementById(id);if(e){e.addEventListener('click',()=>setTimeout(stamp,80),true);e.addEventListener('change',()=>setTimeout(stamp,80),true)}}
+requestAnimationFrame(()=>{stamp();setTimeout(stamp,300);setTimeout(stamp,800)});
+})();
