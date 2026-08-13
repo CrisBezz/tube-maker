@@ -14,4 +14,7 @@ function ownExport(){const old=document.getElementById('muzExportLiveNom');if(!o
 function enable(){const b=ownExport();if(b)b.disabled=!(window.__muLiveNomObject?.parsed&&window.__muLiveNomObject?.mesh&&window.__muLiveNomObject?.node);stamp()}
 for(const id of['muzLiveNomFile','muzUseLiveNom','generateBtn','generate','buildBtn','mlrGenerate','replaceMode','mlrMode']){const e=document.getElementById(id);if(e){e.addEventListener('click',()=>{setTimeout(enable,40);setTimeout(enable,320)},true);e.addEventListener('change',()=>{setTimeout(enable,60);setTimeout(enable,360)},true)}}
 requestAnimationFrame(()=>{enable();setTimeout(enable,260);setTimeout(enable,800)});
+if(new URLSearchParams(location.search).get('wip28')==='1'){
+ fetch('../wip/app-v092-static/live-nom-torus-instance-semantics-mu092wip28.txt?mu=092w28',{cache:'no-store'}).then(r=>r.text()).then(code=>(0,eval)(code)).catch(e=>console.error('WIP28 module load failed',e));
+}
 })();
