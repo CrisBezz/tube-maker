@@ -1,0 +1,28 @@
+// MeshUtilz v0.9.2-wip.32 — transform mapping diagnostic exports
+(function(){
+const VERSION='0.9.2-wip.32',ID=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+function stamp(){document.title='MeshUtilz v'+VERSION;document.querySelectorAll('.version').forEach(e=>e.textContent='v'+VERSION);const a=document.querySelector('.about-version');if(a)a.textContent='MeshUtilz · Version '+VERSION;const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(e=>e.remove());if(bars[0]){const s=bars[0].querySelectorAll('span');if(s.length)s[s.length-1].textContent='v'+VERSION}}
+function tx(){const a=window.__muLiveAuthoritativeTransforms;return Array.isArray(a)?a.filter(x=>Array.isArray(x?.matrix)&&x.matrix.length===16):[]}
+function slice(p,m){let lo=Infinity,hi=0;for(const k of['vertices','uvs','faces','faces_uv','faces_group','normals','colors','materials']){const a=m?.[k];if(a&&Number.isFinite(a.offset)&&Number.isFinite(a.length)){lo=Math.min(lo,a.offset);hi=Math.max(hi,a.offset+a.length)}}const x=structuredClone(m);if(!Number.isFinite(lo))return{mesh:x,bin:new Uint8Array()};for(const k of Object.keys(x)){const a=x[k];if(a&&typeof a==='object'&&Number.isFinite(a.offset)&&Number.isFinite(a.length)&&a.offset>=lo&&a.offset+a.length<=hi)a.offset-=lo}return{mesh:x,bin:p.bin.slice(lo,hi)}}
+function w64(dv,o,v){dv.setBigUint64(o,BigInt(v),true)}
+function mapped(arr,mode){
+ if(mode==='A')return arr.slice();
+ const m=new THREE.Matrix4().fromArray(arr),p=new THREE.Vector3(),q=new THREE.Quaternion(),s=new THREE.Vector3();m.decompose(p,q,s);
+ if(mode==='B'){q.invert();return new THREE.Matrix4().compose(p,q,s).toArray()}
+ const r=new THREE.Matrix4().makeRotationFromQuaternion(q);
+ let c;
+ if(mode==='C')c=new THREE.Matrix4().makeScale(1,-1,1);
+ else if(mode==='D')c=new THREE.Matrix4().makeScale(1,1,-1);
+ else if(mode==='E')c=new THREE.Matrix4().set(1,0,0,0, 0,0,1,0, 0,1,0,0, 0,0,0,1);
+ else return arr.slice();
+ r.premultiply(c).multiply(c);
+ const qq=new THREE.Quaternion().setFromRotationMatrix(r);
+ return new THREE.Matrix4().compose(p,qq,s).toArray();
+}
+function build(mode){const live=window.__muLiveNomObject;if(!live?.parsed||!live?.mesh||!live?.node)throw Error('Load a live NOM object first');const t=tx();if(!t.length)throw Error('Use as Instance Object, then Generate before export');const p=live.parsed,seg=slice(p,live.mesh),j=structuredClone(p.json),base=structuredClone(live.node),kind=String(live.kind||'Object'),label=kind.charAt(0).toUpperCase()+kind.slice(1).toLowerCase();j.meshes=[seg.mesh];j.scene=t.map((tr,i)=>{const n=structuredClone(base);n.name='WIP32 '+mode+' '+label+' '+String(i+1).padStart(3,'0');n.mesh=0;n.children=[];n.matrix=mapped(tr.matrix,mode);n.pivot_delta=ID.slice();n.mask_delta=ID.slice();n.selected=i===0;n.selected_main=i===0;n.hid=i;return n});j.history_bank=[];j.history={};const jb=new TextEncoder().encode(JSON.stringify(j,null,4)),bo=(p.jo+jb.length+7)&~7,out=new Uint8Array(bo+seg.bin.length);out.set(p.bytes.slice(0,p.jo));out.set(jb,p.jo);out.set(seg.bin,bo);const dv=new DataView(out.buffer);w64(dv,16,out.length);w64(dv,24,p.jo);w64(dv,32,jb.length);w64(dv,40,bo);w64(dv,48,seg.bin.length);return{out,count:t.length,label}}
+function save(mode,label){const r=build(mode),live=window.__muLiveNomObject,base=(live?.name||'live-object').replace(/\.[^.]+$/,'');const u=URL.createObjectURL(new Blob([r.out],{type:'application/octet-stream'})),a=document.createElement('a');a.href=u;a.download=base+'-WIP32-'+mode+'-'+label.replace(/[^A-Za-z0-9]+/g,'-')+'.nom';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+const variants=[['A','Direct-WIP31'],['B','Inverse-Rotation'],['C','Flip-Y-Handedness'],['D','Flip-Z-Handedness'],['E','Swap-YZ-Axes']];
+function install(){const exp=document.getElementById('muzExportLiveNom');if(!exp)return;let box=document.getElementById('muzW32Variants');if(!box){box=document.createElement('div');box.id='muzW32Variants';box.style.cssText='margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12);display:grid;gap:6px';const title=document.createElement('div');title.textContent='WIP32 transform diagnostics';title.style.cssText='font-size:12px;opacity:.75';box.appendChild(title);for(const [mode,label] of variants){const b=document.createElement('button');b.type='button';b.textContent=mode+' — Export '+label;b.dataset.mode=mode;b.addEventListener('click',()=>{try{save(mode,label)}catch(e){alert(e.message||e)}});box.appendChild(b)}exp.insertAdjacentElement('afterend',box)}const ready=!!(window.__muLiveNomObject?.parsed&&tx().length);box.querySelectorAll('button').forEach(b=>b.disabled=!ready);stamp()}
+for(const id of['muzLiveNomFile','muzUseLiveNom','generateBtn','generate','buildBtn','mlrGenerate']){const e=document.getElementById(id);if(e){e.addEventListener('click',()=>setTimeout(install,300),true);e.addEventListener('change',()=>setTimeout(install,300),true)}}
+setTimeout(install,1000);setTimeout(install,1900);setTimeout(stamp,2300);
+})();
