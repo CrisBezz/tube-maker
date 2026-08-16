@@ -1,0 +1,8 @@
+// MeshUtilz v0.9.2-wip.81 — frozen runtime payload diagnostic
+(function(){
+'use strict';
+const VERSION='0.9.2-wip.81',NATIVE_BLOB=window.Blob,NATIVE_FILE=window.File;
+function resources(){return performance.getEntriesByType?.('resource')?.filter(e=>{try{return new URL(e.name,location.href).origin===location.origin}catch{return false}}).map(e=>new URL(e.name,location.href).pathname)||[]}
+function describe(){const local=resources(),payloads=local.filter(path=>/meshutilz-v092-wip81\/runtime\.txt$/i.test(path)),legacy=local.filter(path=>/\/wip\/app-v0/i.test(path));return{version:VERSION,payload:'runtime.txt',payloadRequests:payloads.length,legacyModuleRequests:legacy.length,nativeBlobIntact:window.Blob===NATIVE_BLOB,nativeFileIntact:window.File===NATIVE_FILE,sourceModuleCount:43,modeButtons:[...document.querySelectorAll('.mlr-modepop button')].map(b=>(b.textContent||'').trim()).filter(Boolean),exportGlobals:Object.keys(window).filter(k=>/^__mu.*(?:export|w\d+|rc\d+)/i.test(k)).sort()}}
+window.__muW81Runtime={version:VERSION,describe};
+})();
