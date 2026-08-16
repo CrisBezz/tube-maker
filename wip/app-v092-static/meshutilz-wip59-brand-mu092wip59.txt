@@ -1,0 +1,38 @@
+// MeshUtilz v0.9.2-wip.59 — final release-candidate branding authority
+(function(){
+'use strict';
+const PRODUCT='MeshUtilz',VERSION='0.9.2-wip.59';
+function brand(){
+ document.title=PRODUCT+' v'+VERSION;document.body?.setAttribute('data-meshutilz-release','wip59');
+ document.querySelectorAll('.version').forEach(element=>element.textContent='v'+VERSION);
+ const about=document.querySelector('.about-version');if(about)about.textContent=PRODUCT+' · Version '+VERSION;
+ const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(element=>element.remove());if(bars[0]){const spans=bars[0].querySelectorAll('span');if(spans.length)spans[spans.length-1].textContent='v'+VERSION}
+}
+function value(id){const element=document.getElementById(id);return element?.selectedOptions?.[0]?.textContent?.trim()||element?.value||''}
+function sourceLabel(){const selected=document.getElementById('fileInput')?.files?.[0]?.name;const named=typeof sourceName!=='undefined'?sourceName:'';return selected||(!/^(mesh-line-replacer)?$/i.test(named||'')?named:'')||'None loaded'}
+function objectLabel(){const live=window.__muLiveNomObject;if(live)return live.name||('MeshUtilz '+live.kind);const selected=document.getElementById('customInstanceFile')?.files?.[0]?.name;const named=typeof customMasterName!=='undefined'?customMasterName:'';return selected||(!/^(imported-object)?$/i.test(named||'')?named:'')||'None loaded'}
+function workflowLabel(){const key=window.__muWorkflowMode||'generated';return key==='nomad-tube-network'?'Nomad Tube Network':key==='nomad-parametric'?'Nomad Parametric':key==='custom-mesh'?'Custom Mesh / Greeble':'Generated Geometry'}
+function modeLabel(){const key=window.__muWorkflowMode||'generated',live=window.__muLiveNomObject;if(key==='nomad-tube-network')return'Linked procedural Tube per source edge';if(key==='nomad-parametric')return live?.kind?(live.kind[0]+live.kind.slice(1).toLowerCase()+' procedural instances'):'Editable Nomad primitives';if(key==='custom-mesh')return'Imported mesh instances';return value('replaceMode')||value('mlrMode')||'—'}
+function projectInfo(){
+ const live=window.__muLiveNomObject,transforms=window.__muLiveAuthoritativeTransforms;
+ const lines=[PRODUCT+' '+VERSION,'Workflow: '+workflowLabel(),'Mode: '+modeLabel(),'Source mesh: '+sourceLabel(),'Instance object: '+objectLabel()];
+ if(live?.kind)lines.push('Nomad primitive: '+live.kind[0]+live.kind.slice(1).toLowerCase());
+ if(Array.isArray(transforms)&&transforms.length)lines.push('Authoritative placements: '+transforms.length);
+ lines.push('Processing: Local to this device');return lines.join('\n');
+}
+function updateAbout(){
+ const dialog=document.getElementById('aboutDialog'),head=dialog?.querySelector('.about-head h2'),body=dialog?.querySelector('.about-body');if(!body)return;
+ if(head)head.textContent=PRODUCT;
+ body.innerHTML='<span class="about-version">MeshUtilz · Version 0.9.2-wip.59</span><p>A touch-friendly modelling utility for iPad and modern browsers. Source meshes, custom objects and Nomad files are processed locally on this device.</p><h3>Workflows</h3><ul><li><strong>Generated Geometry</strong> — faceted tubes, inset and solid surface webs, and torus placement.</li><li><strong>Custom Mesh / Greeble</strong> — scatter an imported mesh with repair and scale controls.</li><li><strong>Nomad Parametric</strong> — create or import editable Tube, Torus, Box and Cylinder primitives.</li><li><strong>Nomad Tube Network</strong> — fit differently scaled instances of one editable Tube master to the selected source-mesh edges.</li></ul><h3>WIP59 focus</h3><ul><li>One shared procedural Tube mesh referenced by every network node.</li><li>Per-edge translation, orientation and local-Y length scaling.</li><li>Constant transverse scale so the Tube radius remains uniform.</li><li>Grouped NOM export with endpoint, matrix and procedural validation.</li><li>The original Faceted Tubes workflow remains available and unchanged.</li></ul><p><strong>Test build:</strong> confirm Tube placement, radius, linked editing and save/close/reopen behaviour in Nomad.</p><p>Built for touch-first modelling · © 2026</p>';
+}
+function installInfo(){
+ const pop=document.querySelector('.mlr-filepop'),button=pop?.querySelector('button[data-act="info"]'),box=document.getElementById('mlrFileInfo');
+ if(button&&box&&!button.dataset.wip59Info){button.dataset.wip59Info='1';button.addEventListener('click',event=>{event.stopPropagation();box.textContent=projectInfo();box.hidden=!box.hidden})}
+ updateAbout();
+}
+function settle(){for(const delay of[0,80,260,700])setTimeout(()=>{brand();installInfo()},delay)}
+document.addEventListener?.('click',event=>{if(event.target?.closest?.('button'))settle()},true);document.addEventListener?.('change',settle,true);
+window.addEventListener?.('load',settle);requestAnimationFrame(settle);setTimeout(settle,1400);brand();
+installInfo();window.__muWIP59Brand={brand,installInfo,projectInfo,version:VERSION};
+})();
