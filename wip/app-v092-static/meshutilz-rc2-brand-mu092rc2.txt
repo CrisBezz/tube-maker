@@ -9,8 +9,30 @@ function brand(){
  const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;
  const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(element=>element.remove());if(bars[0]){const spans=bars[0].querySelectorAll('span');if(spans.length)spans[spans.length-1].textContent='v'+VERSION}
 }
-function settle(){for(const delay of[0,80,260,700])setTimeout(brand,delay)}
+function value(id){const element=document.getElementById(id);return element?.selectedOptions?.[0]?.textContent?.trim()||element?.value||''}
+function sourceLabel(){const selected=document.getElementById('fileInput')?.files?.[0]?.name;const named=typeof sourceName!=='undefined'?sourceName:'';return selected||(!/^(mesh-line-replacer)?$/i.test(named||'')?named:'')||'None loaded'}
+function objectLabel(){const live=window.__muLiveNomObject;if(live)return live.name||('MeshUtilz '+live.kind);const selected=document.getElementById('customInstanceFile')?.files?.[0]?.name;const named=typeof customMasterName!=='undefined'?customMasterName:'';return selected||(!/^(imported-object)?$/i.test(named||'')?named:'')||'None loaded'}
+function workflowLabel(){const key=window.__muWorkflowMode||'generated';return key==='nomad-parametric'?'Nomad Parametric':key==='custom-mesh'?'Custom Mesh / Greeble':'Generated Geometry'}
+function modeLabel(){const key=window.__muWorkflowMode||'generated',live=window.__muLiveNomObject;if(key==='nomad-parametric')return live?.kind?(live.kind[0]+live.kind.slice(1).toLowerCase()+' procedural instances'):'Editable Nomad primitives';if(key==='custom-mesh')return'Imported mesh instances';return value('replaceMode')||value('mlrMode')||'—'}
+function projectInfo(){
+ const live=window.__muLiveNomObject,transforms=window.__muLiveAuthoritativeTransforms;
+ const lines=[PRODUCT+' '+VERSION,'Workflow: '+workflowLabel(),'Mode: '+modeLabel(),'Source mesh: '+sourceLabel(),'Instance object: '+objectLabel()];
+ if(live?.kind)lines.push('Nomad primitive: '+live.kind[0]+live.kind.slice(1).toLowerCase());
+ if(Array.isArray(transforms)&&transforms.length)lines.push('Authoritative placements: '+transforms.length);
+ lines.push('Processing: Local to this device');return lines.join('\n');
+}
+function updateAbout(){
+ const dialog=document.getElementById('aboutDialog'),head=dialog?.querySelector('.about-head h2'),body=dialog?.querySelector('.about-body');if(!body)return;
+ if(head)head.textContent=PRODUCT;
+ body.innerHTML='<span class="about-version">MeshUtilz · Version 0.9.2 RC2</span><p>A touch-friendly modelling utility for iPad and modern browsers. Source meshes, custom objects and Nomad files are processed locally on this device.</p><h3>Workflows</h3><ul><li><strong>Generated Geometry</strong> — faceted tubes, inset and solid surface webs, and torus placement.</li><li><strong>Custom Mesh / Greeble</strong> — scatter an imported mesh with repair and scale controls.</li><li><strong>Nomad Parametric</strong> — create or import editable Tube, Torus, Box and Cylinder primitives, then export grouped instances to Nomad.</li></ul><h3>RC2 highlights</h3><ul><li>Built-in editable Nomad primitive factory.</li><li>Primitive-specific dimensions with relative, constant and Nomad sizing.</li><li>Grouped procedural NOM export with inline validation.</li><li>Face or node placement, density, orientation and symmetry controls.</li><li>GLB export remains available for generated and custom-mesh workflows.</li></ul><p><strong>Release candidate:</strong> please report unexpected placement, editing or reopen behaviour. Compressed/LZ4 Tube caches are rejected rather than exported unsafely.</p><p>Built for touch-first modelling · © 2026</p>';
+}
+function installInfo(){
+ const pop=document.querySelector('.mlr-filepop'),button=pop?.querySelector('button[data-act="info"]'),box=document.getElementById('mlrFileInfo');
+ if(button&&box&&!button.dataset.rc2Info){button.dataset.rc2Info='1';button.addEventListener('click',event=>{event.stopPropagation();box.textContent=projectInfo();box.hidden=!box.hidden})}
+ updateAbout();
+}
+function settle(){for(const delay of[0,80,260,700])setTimeout(()=>{brand();installInfo()},delay)}
 document.addEventListener?.('click',event=>{if(event.target?.closest?.('button'))settle()},true);document.addEventListener?.('change',settle,true);
 window.addEventListener?.('load',settle);requestAnimationFrame(settle);setTimeout(settle,1400);brand();
-window.__muRC2Brand={brand,version:VERSION};
+installInfo();window.__muRC2Brand={brand,installInfo,projectInfo,version:VERSION};
 })();

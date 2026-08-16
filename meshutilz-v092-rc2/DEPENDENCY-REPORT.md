@@ -2,6 +2,8 @@
 
 RC2 is a promotion of the user-confirmed WIP58 baseline. It introduces no scatter, placement, grouping or NOM-export algorithm changes.
 
+The RC2 publication candidate also refreshes the File menu's Project Info and About surfaces. This is presentation-only and does not alter generation or export data.
+
 ## Release-candidate scope
 
 - Separate Nomad Parametric and Custom Mesh / Greeble workflows.
