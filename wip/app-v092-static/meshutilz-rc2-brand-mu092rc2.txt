@@ -1,0 +1,16 @@
+// MeshUtilz v0.9.2 RC2 — final release-candidate branding authority
+(function(){
+'use strict';
+const PRODUCT='MeshUtilz',VERSION='0.9.2 RC2';
+function brand(){
+ document.title=PRODUCT+' v'+VERSION;document.body?.setAttribute('data-meshutilz-release','rc2');
+ document.querySelectorAll('.version').forEach(element=>element.textContent='v'+VERSION);
+ const about=document.querySelector('.about-version');if(about)about.textContent=PRODUCT+' · Version '+VERSION;
+ const title=document.querySelector('.title');if(title)title.textContent=PRODUCT;
+ const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(element=>element.remove());if(bars[0]){const spans=bars[0].querySelectorAll('span');if(spans.length)spans[spans.length-1].textContent='v'+VERSION}
+}
+function settle(){for(const delay of[0,80,260,700])setTimeout(brand,delay)}
+document.addEventListener?.('click',event=>{if(event.target?.closest?.('button'))settle()},true);document.addEventListener?.('change',settle,true);
+window.addEventListener?.('load',settle);requestAnimationFrame(settle);setTimeout(settle,1400);brand();
+window.__muRC2Brand={brand,version:VERSION};
+})();

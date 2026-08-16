@@ -1,0 +1,25 @@
+// MeshUtilz v0.9.2 RC2 — bundled editable Nomad primitive factory
+(function(){
+'use strict';
+const VERSION='0.9.2 RC2',KINDS=new Set(['box','cylinder','torus','tube']);let busy=false;
+function stamp(){document.title='MeshUtilz v'+VERSION;document.querySelectorAll('.version').forEach(e=>e.textContent='v'+VERSION);const a=document.querySelector('.about-version');if(a)a.textContent='MeshUtilz · Version '+VERSION}
+function buttons(){return[...document.querySelectorAll('#muzRC2Factory [data-muz57-primitive]')]}
+function select(kind){for(const button of buttons())button.classList.toggle('is-active',button.dataset.muz57Primitive===kind)}
+async function create(kind){
+  kind=String(kind||'').toLowerCase();if(!KINDS.has(kind)||busy)return null;
+  const support=window.__muRC2Support;if(!support?.loadPrimitiveBytes||!support?.use)throw Error('RC2 primitive factory support is unavailable');
+  busy=true;for(const button of buttons())button.disabled=true;const chosen=buttons().find(b=>b.dataset.muz57Primitive===kind),old=chosen?.textContent;if(chosen)chosen.textContent='Creating…';
+  try{
+    const response=await fetch('templates/'+kind+'.nom?mu=092rc2',{cache:'no-store'});if(!response.ok)throw Error('Template HTTP '+response.status);
+    const bytes=new Uint8Array(await response.arrayBuffer()),name='MeshUtilz-'+kind[0].toUpperCase()+kind.slice(1)+'.nom';
+    const live=support.loadPrimitiveBytes(bytes,name,true);select(kind);support.use();
+    window.__muPrimitiveParameterAuthority?.setWorkflow?.('nomad-parametric');window.__muPrimitiveParameterAuthority?.renderParameters?.();
+    setTimeout(()=>window.__muRC2Support?.restoreInspectorSection?.('Size'),100);
+    setStatus?.('RC2: internal '+live.kind+' created • set dimensions and Generate');return live;
+  }catch(error){support.rejectLoad?.(error);alert('RC2 could not create '+kind+': '+(error.message||error));return null}
+  finally{busy=false;for(const button of buttons())button.disabled=false;if(chosen)chosen.textContent=old;stamp()}
+}
+function bind(){const root=document.getElementById('muzRC2Factory');if(!root||root.dataset.bound)return false;root.dataset.bound='1';root.addEventListener('click',event=>{const button=event.target.closest?.('[data-muz57-primitive]');if(button)create(button.dataset.muz57Primitive)});return true}
+window.__muRC2Factory={create,kinds:[...KINDS]};
+requestAnimationFrame(()=>{bind();setTimeout(bind,180);setTimeout(bind,600)});stamp();
+})();
