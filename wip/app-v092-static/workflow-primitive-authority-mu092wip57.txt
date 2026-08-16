@@ -1,0 +1,225 @@
+// MeshUtilz v0.9.2-wip.57 — workflow separation and Nomad primitive parameter authority
+(function(){
+'use strict';
+const VERSION='0.9.2-wip.57';
+const HIDE_CLASSES=['hidden','mlr24-hidden','mlr21-hidden','mlr20-hidden','mlr18-hidden','mlr17-hidden','mlr15-hidden','mlr14-hidden','mlr11-hidden','mlr10-hidden','mlr-context-hidden','mlr-mode-hidden','mlr-consolidated-hidden','mlr-wip6-hidden'];
+const ADAPTERS={
+  BOX:{
+    title:'Box dimensions',
+    fields:[['size_x','Width'],['size_y','Height'],['size_z','Depth']],
+    config:'config_box',
+    map(p,source,target){return[p[0]*target.size_x/source.size_x,p[1]*target.size_y/source.size_y,p[2]*target.size_z/source.size_z]}
+  },
+  CYLINDER:{
+    title:'Cylinder dimensions',
+    fields:[['height','Length'],['radius_start','Bottom radius'],['radius_end','Top radius']],
+    config:'config_cylinder',
+    map(p,source,target){
+      const yRatio=target.height/source.height,t=Math.max(0,Math.min(1,p[1]/source.height+.5));
+      const oldRadius=source.radius_start+(source.radius_end-source.radius_start)*t;
+      const newRadius=target.radius_start+(target.radius_end-target.radius_start)*t;
+      const radial=oldRadius>1e-9?newRadius/oldRadius:1;
+      return[p[0]*radial,p[1]*yRatio,p[2]*radial];
+    }
+  },
+  TORUS:{
+    title:'Torus dimensions',
+    fields:[['radius_outer','Outer radius'],['radius_inner','Inner radius']],
+    config:'config_torus',
+    map(p,source,target){
+      const rho=Math.hypot(p[0],p[2]),minorScale=target.radius_inner/source.radius_inner;
+      const newRho=target.radius_outer+(rho-source.radius_outer)*minorScale;
+      const radial=rho>1e-9?newRho/rho:1;
+      return[p[0]*radial,p[1]*minorScale,p[2]*radial];
+    }
+  },
+  TUBE:{
+    title:'Tube dimensions',fields:[['length','Length'],['radius','Radius']],config:'config_tube',
+    read(config){const points=config?.curve?.points||[],a=points[0]||[0,-.5,0],b=points.at(-1)||[0,.5,0];return{length:Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])||1,radius:Number(config?.radiuses?.[0])||.5}},
+    write(config,values){config.curve.points=[[0,-values.length/2,0],[0,values.length/2,0]];config.curve.sharps=[0,0];config.curve.closed=false;config.radiuses=[values.radius,values.radius];config.rotates=[0,0];config.spirals=[0,0];if(Array.isArray(config.profiles)&&config.profiles.length){const seed=structuredClone(config.profiles[0]);config.profiles=[structuredClone(seed),structuredClone(seed)]}},
+    map(p,source,target){return[p[0]*target.radius/source.radius,p[1]*target.length/source.length,p[2]*target.radius/source.radius]}
+  }
+};
+function stamp(){
+  document.title='MeshUtilz v'+VERSION;
+  document.querySelectorAll('.version').forEach(e=>e.textContent='v'+VERSION);
+  const a=document.querySelector('.about-version');if(a)a.textContent='MeshUtilz · Version '+VERSION;
+  const bars=[...document.querySelectorAll('.mlr-statusbar,.mlr-wip8-statusbar')];bars.slice(1).forEach(e=>e.remove());
+  if(bars[0]){const s=bars[0].querySelectorAll('span');if(s.length)s[s.length-1].textContent='v'+VERSION}
+}
+function reveal(el){if(!el)return;HIDE_CLASSES.forEach(c=>el.classList.remove(c));el.style.removeProperty('display')}
+function conceal(el){if(!el)return;el.style.setProperty('display','none','important')}
+function wrapper(id){const el=document.getElementById(id);return el?.closest('.control')||el?.closest('label.check')||el}
+function setUnderlyingImported(){
+  for(const id of['replaceMode','mlrMode']){
+    const select=document.getElementById(id);if(!select)continue;
+    const option=[...select.options].find(o=>/import|custom|instance object/i.test((o.value||'')+' '+(o.textContent||'')));
+    if(option&&select.value!==option.value){select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}))}
+  }
+}
+function workflow(){return window.__muWorkflowMode||'generated'}
+function ensureNomadSizeOption(active){
+  const select=document.getElementById('customSizeMode');if(!select)return null;let option=[...select.options].find(o=>o.value==='nomad');
+  if(active&&!option){option=new Option('Nomad dimensions','nomad');select.add(option)}
+  if(!active&&option){if(select.value==='nomad')select.value='relative';option.remove()}
+  return select;
+}
+function badge(){
+  let el=document.getElementById('muzW57WorkflowBadge');if(el)return el;
+  el=document.createElement('div');el.id='muzW57WorkflowBadge';el.className='muz56-workflow-badge';
+  const inspector=[...document.querySelectorAll('strong')].find(x=>/INSPECTOR/i.test(x.textContent||''));
+  (inspector?.parentElement||document.querySelector('.panel,.sidebar,.controls'))?.insertBefore(el,inspector?.nextSibling||null);
+  return el;
+}
+function syncWorkflowUI(){
+  const mode=workflow(),body=document.body,procedural=document.getElementById('muzLiveNom'),exportBox=document.getElementById('muzW57Box'),custom=document.getElementById('customInstanceSection'),b=badge();
+  ensureNomadSizeOption(mode==='nomad-parametric'&&window.__muLiveNomObject?.kind!=='TUBE');
+  body?.classList.toggle('muz56-parametric',mode==='nomad-parametric');
+  body?.classList.toggle('muz56-custom-mesh',mode==='custom-mesh');
+  if(procedural){if(mode==='nomad-parametric')reveal(procedural);else conceal(procedural)}
+  if(exportBox){if(mode==='nomad-parametric')reveal(exportBox);else conceal(exportBox)}
+  if(custom){if(mode==='custom-mesh')reveal(custom)}
+  if(mode==='custom-mesh'){const sizeMode=document.getElementById('customSizeMode'),constant=sizeMode?.value==='constant';reveal(wrapper('customSizeMode'));if(constant){conceal(wrapper('customRelativeScale'));reveal(wrapper('customConstantSize'))}else{reveal(wrapper('customRelativeScale'));conceal(wrapper('customConstantSize'))}reveal(document.querySelector('.mlr10-section[data-mlr10="Geometry / Quality"]'))}
+  if(b){b.textContent=mode==='nomad-parametric'?'PARAMETRIC · EDITABLE NOMAD PRIMITIVE':mode==='custom-mesh'?'MESH · CUSTOM OBJECT / GREEBLE':'GENERATED GEOMETRY';b.dataset.mode=mode}
+  const modeLabel=document.querySelector('.mlr12-mode'),nativeMode=document.getElementById('replaceMode')||document.getElementById('mlrMode');if(modeLabel)modeLabel.textContent=mode==='nomad-parametric'?'Nomad Parametric':mode==='custom-mesh'?'Custom Mesh / Greeble':(nativeMode?.selectedOptions?.[0]?.textContent||'Generated geometry');
+  for(const nav of document.querySelectorAll('.mlr12-nav button'))if(/^quality$/i.test((nav.textContent||'').trim())){if(mode==='nomad-parametric')conceal(nav);else if(mode==='custom-mesh')reveal(nav)}
+  renderParameters();moveSymmetryIntoRollout();stamp();
+}
+function setWorkflow(mode){
+  window.__muWorkflowMode=mode;
+  if(mode==='nomad-parametric'||mode==='custom-mesh')setUnderlyingImported();
+  if(mode==='nomad-parametric'){const p=document.getElementById('muzLiveNom');if(p)p.open=true}
+  syncWorkflowUI();setTimeout(syncWorkflowUI,80);setTimeout(syncWorkflowUI,240);
+}
+function decorateModeMenu(){
+  const list=document.getElementById('mlrModeList');if(!list||list.querySelector('.muz56-workflow-group'))return;
+  const group=document.createElement('div');group.className='muz56-workflow-group';
+  group.innerHTML='<div class="muz56-mode-label">OBJECT WORKFLOW</div><button type="button" data-muz56-workflow="nomad-parametric"><b>Nomad Parametric</b><small>Editable Tube, Torus, Box or Cylinder</small></button><button type="button" data-muz56-workflow="custom-mesh"><b>Custom Mesh / Greeble</b><small>Imported model with mesh scaling and repair</small></button><div class="muz56-mode-label">GENERATED GEOMETRY</div>';
+  group.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();setWorkflow(btn.dataset.muz56Workflow);const pop=list.closest('.mlr-modepop');if(pop)pop.hidden=true}));
+  list.prepend(group);
+  for(const btn of list.querySelectorAll(':scope > button')){const text=(btn.textContent||'').toLowerCase();if(/imported instance/.test(text)){conceal(btn);continue}btn.addEventListener('click',()=>setWorkflow('generated'),{once:true})}
+  stamp();
+}
+function initState(live){
+  if(!live||live.parameterState)return live?.parameterState||null;
+  const adapter=ADAPTERS[live.kind],config=adapter&&live.mesh?.[adapter.config];if(!adapter||!config)return null;
+  const fields=live.kind==='TUBE'&&!live.internalFactory?[]:adapter.fields,values=adapter.read?adapter.read(config):{};if(!adapter.read)for(const [key] of fields)values[key]=Number(config[key]);
+  live.parameterState={kind:live.kind,sourceConfig:structuredClone(config),sourceBin:live.parsed.bin.slice(),values,fields,changed:false};
+  return live.parameterState;
+}
+function mutateVertices(live,adapter,state){
+  live.parsed.bin=state.sourceBin.slice();
+  if(!state.fields.length)return;
+  const field=live.mesh.vertices;
+  if(field?.lz4)throw Error('WIP57 parameter editing does not support compressed/LZ4 '+live.kind+' vertex caches');
+  if(field?.type!=='f32vec3'||!Number.isFinite(field.count)||field.length<field.count*12)throw Error('WIP57 parameter editing requires an uncompressed f32vec3 vertex cache');
+  const source=new DataView(state.sourceBin.buffer,state.sourceBin.byteOffset,state.sourceBin.byteLength),out=new DataView(live.parsed.bin.buffer,live.parsed.bin.byteOffset,live.parsed.bin.byteLength);
+  const base=field.offset,target=state.values,sourceValues=adapter.read?adapter.read(state.sourceConfig):state.sourceConfig;
+  for(let i=0;i<field.count;i++){
+    const o=base+i*12,p=[source.getFloat32(o,true),source.getFloat32(o+4,true),source.getFloat32(o+8,true)],q=adapter.map(p,sourceValues,target);
+    out.setFloat32(o,q[0],true);out.setFloat32(o+4,q[1],true);out.setFloat32(o+8,q[2],true);
+  }
+}
+function refreshGeometry(live){
+  const support=window.__muW57Support;support?.resetPreviewGeometry?.();
+  if(window.__muLiveMasterBridged)support?.bridge?.();
+  support?.rebuildPreview?.();
+  window.__muLiveAuthoritativeTransforms=[];window.__muLivePreviewPlacements=[];
+  support?.setStep?.('generate');
+  const report=document.getElementById('muzW57Report');if(report)report.textContent='Primitive parameters changed — press Generate before download.';
+  setTimeout(()=>{const d=document.getElementById('muzW57Download');if(d)d.disabled=true},0);
+}
+function applyState(live){
+  const state=initState(live),adapter=ADAPTERS[live?.kind];if(!state||!adapter)return;
+  for(const [key] of state.fields){const value=Number(state.values[key]);if(!(value>0)||!Number.isFinite(value))throw Error(adapter.title+': '+key+' must be greater than zero')}
+  const cfg=live.mesh[adapter.config];if(adapter.write)adapter.write(cfg,state.values);else for(const [key] of state.fields)cfg[key]=state.values[key];
+  const sourceValues=adapter.read?adapter.read(state.sourceConfig):state.sourceConfig;state.changed=state.fields.some(([key])=>Math.abs(state.values[key]-Number(sourceValues[key]))>1e-8);
+  mutateVertices(live,adapter,state);refreshGeometry(live);
+}
+function parameterContainer(){
+  const panel=document.querySelector('.panel,.sidebar,.controls'),section=panel?.querySelector('.mlr10-section[data-mlr10="Size"]');if(!section)return null;
+  let el=document.getElementById('muzW57PrimitiveParameters');if(!el){el=document.createElement('div');el.id='muzW57PrimitiveParameters';el.className='control muz56-parameter-controls';(section.querySelector('.mlr10-body')||section).prepend(el)}
+  reveal(section);reveal(el);return el;
+}
+function renderParameters(){
+  const active=workflow()==='nomad-parametric',live=window.__muLiveNomObject,adapter=ADAPTERS[live?.kind],el=parameterContainer(),mode=ensureNomadSizeOption(active&&live?.kind!=='TUBE');if(!el)return;
+  document.body?.classList.toggle('muz56-nomad-sizing',!!(active&&mode?.value==='nomad'));
+  if(!active||!live||!adapter){conceal(el);return}
+  reveal(el);const state=initState(live);
+  const customControls=['customSizeMode','customRelativeScale','customConstantSize'];
+  customControls.forEach(id=>{const w=wrapper(id);if(!w)return;w.classList.add('muz56-native-size-control')});
+  for(const id of['customRelativeScale','customConstantSize'])wrapper(id)?.classList.add('muz56-size-value-control');
+  const constant=mode?.value==='constant',nomad=mode?.value==='nomad';
+  reveal(wrapper('customSizeMode'));if(nomad){conceal(wrapper('customRelativeScale'));conceal(wrapper('customConstantSize'))}else if(constant){conceal(wrapper('customRelativeScale'));reveal(wrapper('customConstantSize'))}else{reveal(wrapper('customRelativeScale'));conceal(wrapper('customConstantSize'))}
+  const modeLabel=document.querySelector('label[for="customSizeMode"]'),relativeLabel=document.querySelector('label[for="customRelativeScale"]'),constantLabel=document.querySelector('label[for="customConstantSize"]');
+  if(modeLabel)modeLabel.textContent='Placement sizing';if(relativeLabel)relativeLabel.textContent=live.kind==='TUBE'?'Relative tube scale':'Relative scale';if(constantLabel)constantLabel.textContent='Constant size';
+  if(live.kind==='TUBE'&&!live.internalFactory){el.innerHTML='<b>Imported Tube size</b><small>The imported Tube keeps its existing Nomad curve. Use relative or constant placement sizing below.</small>';return}
+  el.innerHTML='<b>'+adapter.title+'</b><small>Edits the linked Nomad master and its cached preview geometry.</small>';
+  for(const [key,label] of state.fields){
+    const row=document.createElement('label');row.className='muz56-param-row';row.innerHTML='<span>'+label+'</span><input type="number" inputmode="decimal" min="0.001" step="0.01" data-muz56-param="'+key+'">';
+    const input=row.querySelector('input');input.value=String(state.values[key]);
+    input.addEventListener('change',()=>{try{state.values[key]=Number(input.value);applyState(live);renderParameters();setStatus?.('WIP57: '+adapter.title+' updated • press Generate')}catch(e){input.value=String(state.values[key]);alert(e.message||e)}});
+    el.appendChild(row);
+  }
+  const reset=document.createElement('button');reset.type='button';reset.className='muz56-reset';reset.textContent='Reset '+(live.internalFactory?'default':'loaded')+' dimensions';reset.addEventListener('click',()=>{const sourceValues=adapter.read?adapter.read(state.sourceConfig):state.sourceConfig;for(const [key] of state.fields)state.values[key]=Number(sourceValues[key]);applyState(live);renderParameters()});el.appendChild(reset);
+}
+function masterMaximumSize(){
+  try{if(typeof customMasterMaxSize==='number'&&Number.isFinite(customMasterMaxSize)&&customMasterMaxSize>0)return customMasterMaxSize}catch(_){ }
+  const live=window.__muLiveNomObject,field=live?.mesh?.vertices;if(!live||field?.lz4)return NaN;
+  const size=fieldBounds(live).size;return Math.max(...size);
+}
+function beginNomadDimensionGeneration(){
+  const select=document.getElementById('customSizeMode'),constant=document.getElementById('customConstantSize');
+  if(workflow()!=='nomad-parametric'||select?.value!=='nomad'||!window.__muLiveNomObject||!constant)return null;
+  const maximum=masterMaximumSize();if(!(maximum>0)||!Number.isFinite(maximum))throw Error('WIP57 cannot determine the procedural master size for Nomad dimensions mode');
+  const context={select,constant,oldMode:select.value,oldConstant:constant.value,maximum};
+  select.value='constant';constant.value=String(maximum);window.__muNomadDimensionGeneration={active:true,maximum};return context;
+}
+function restoreNomadDimensionGeneration(context){if(!context)return;context.select.value=context.oldMode;context.constant.value=context.oldConstant;window.__muNomadDimensionGeneration={active:false,maximum:context.maximum};renderParameters();for(const delay of[0,80,180])setTimeout(()=>window.__muW57Support?.restoreInspectorSection?.('Size'),delay)}
+function moveSymmetryIntoRollout(){
+  const panel=document.querySelector('.panel,.sidebar,.controls'),section=panel?.querySelector('.mlr10-section[data-mlr10="Symmetry"]');if(!section)return false;
+  const body=section.querySelector('.mlr10-body')||section,symmetry=document.getElementById('symmetry'),plane=document.getElementById('showSymmetryPlane');if(!symmetry||!plane)return false;
+  const oldSection=symmetry.closest('.section'),note=oldSection?.querySelector('p.note')||document.querySelector('.muz56-symmetry-note');
+  const controls=[symmetry.closest('label.check'),wrapper('symmetryAxis'),wrapper('symmetrySide'),plane.closest('label.check'),note].filter(Boolean);
+  controls.forEach(el=>{reveal(el);body.appendChild(el)});if(note)note.classList.add('muz56-symmetry-note');
+  if(oldSection&&oldSection!==section)conceal(oldSection);reveal(section);return true;
+}
+function fieldBounds(live){
+  const a=live.mesh.vertices,dv=new DataView(live.parsed.bin.buffer,live.parsed.bin.byteOffset,live.parsed.bin.byteLength),lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
+  for(let i=0;i<a.count;i++)for(let k=0;k<3;k++){const v=dv.getFloat32(a.offset+i*12+k*4,true);lo[k]=Math.min(lo[k],v);hi[k]=Math.max(hi[k],v)}return{lo,hi,size:hi.map((v,k)=>v-lo[k])};
+}
+function close(a,b,t=3e-3){return Math.abs(a-b)<=t*Math.max(1,Math.abs(a),Math.abs(b))}
+function validateLive(live){
+  const adapter=ADAPTERS[live?.kind],state=live?.parameterState;if(!adapter||!state||!state.fields.length)return true;
+  if(live.mesh.vertices?.lz4)throw Error('WIP57 validation failed: edited compressed/LZ4 '+live.kind+' cache');
+  const cfg=live.mesh[adapter.config],actual=adapter.read?adapter.read(cfg):cfg;for(const [key] of state.fields)if(!close(Number(actual[key]),Number(state.values[key]),1e-6))throw Error('WIP57 validation failed: '+key+' does not match the parameter panel');
+  const bounds=fieldBounds(live),v=state.values;
+  if(live.kind==='BOX'&&(!close(bounds.size[0],v.size_x)||!close(bounds.size[1],v.size_y)||!close(bounds.size[2],v.size_z)))throw Error('WIP57 validation failed: Box cache dimensions do not match its Nomad parameters');
+  if(live.kind==='CYLINDER'&&!close(bounds.size[1],v.height))throw Error('WIP57 validation failed: Cylinder cache length does not match its Nomad height');
+  if(live.kind==='TORUS'&&(!close(bounds.size[1],v.radius_inner*2)||!close(bounds.size[0],(v.radius_outer+v.radius_inner)*2)))throw Error('WIP57 validation failed: Torus cache dimensions do not match its Nomad radii');
+  if(live.kind==='TUBE'&&live.internalFactory&&(!close(bounds.size[1],v.length)||!close(bounds.size[0],v.radius*2)))throw Error('WIP57 validation failed: Tube cache dimensions do not match its Nomad length and radius');
+  return true;
+}
+function installStyle(){if(document.getElementById('muzW57Style'))return;const style=document.createElement('style');style.id='muzW57Style';style.textContent=`
+.muz56-workflow-badge{margin:6px 0 10px;padding:7px 9px;border:1px solid #536784;border-radius:8px;color:#bcd2ff;font-size:10px;letter-spacing:.06em}
+.muz56-workflow-group{display:grid;gap:6px;margin-bottom:8px}.muz56-mode-label{padding:7px 6px 2px;color:#8fa3c3;font-size:9px;font-weight:700;letter-spacing:.1em}.muz56-workflow-group button{display:flex!important;flex-direction:column;align-items:flex-start!important;gap:2px}.muz56-workflow-group button small{opacity:.68;font-weight:400;text-align:left}
+.muz56-parameter-controls{display:grid!important;grid-template-columns:1fr!important;gap:8px!important;padding:10px!important;border:1px solid #4e6280;border-radius:10px;background:#171c25}.muz56-parameter-controls>b{color:#d6e3ff}.muz56-parameter-controls>small{opacity:.72;line-height:1.35}.muz56-param-row{display:grid!important;grid-template-columns:1fr minmax(92px,35%)!important;align-items:center;gap:10px}.muz56-param-row input{width:100%;box-sizing:border-box}.muz56-reset{margin-top:2px}
+body:not(.muz56-parametric) #muzLiveNom,body:not(.muz56-parametric) #muzW57Box{display:none!important}
+body.muz56-parametric #customInstanceSection>h2,body.muz56-parametric #customMasterStatus,body.muz56-parametric #customRepairStatus,body.muz56-parametric #customInstanceSection>p.note,body.muz56-parametric .mlr10-section[data-mlr10="Geometry / Quality"]{display:none!important}
+body.muz56-parametric .mlr12-mode{display:none!important}
+body.muz56-parametric.muz56-nomad-sizing .muz56-size-value-control{display:none!important}
+.muz56-symmetry-note{margin:5px 0 0!important}
+` ;document.head.appendChild(style)}
+function settleLoaded(){const live=window.__muLiveNomObject;if(live){initState(live);setWorkflow('nomad-parametric');renderParameters()}syncWorkflowUI()}
+installStyle();window.__muPrimitiveParameterAdapters=ADAPTERS;window.__muPrimitiveParameterAuthority={adapters:ADAPTERS,initState,applyState,renderParameters,validateLive,setWorkflow,beginNomadDimensionGeneration,restoreNomadDimensionGeneration,masterMaximumSize};
+document.getElementById('mlrModeBtn')?.addEventListener('click',()=>{setTimeout(decorateModeMenu,0);setTimeout(decorateModeMenu,80)},true);
+document.getElementById('muzLiveNomFile')?.addEventListener('change',()=>{setTimeout(settleLoaded,80);setTimeout(settleLoaded,240);setTimeout(settleLoaded,600)});
+window.addEventListener('mu:primitive-loaded',()=>{settleLoaded();setTimeout(settleLoaded,120);setTimeout(settleLoaded,360)});
+document.getElementById('muzUseLiveNom')?.addEventListener('click',()=>{setWorkflow('nomad-parametric');setTimeout(renderParameters,120)},true);
+document.getElementById('customInstanceFile')?.addEventListener('change',()=>setWorkflow('custom-mesh'),true);
+document.addEventListener('click',e=>{const b=e.target?.closest?.('.mlr12-nav button');if(b&&/^size$/i.test((b.textContent||'').trim()))setTimeout(renderParameters,0)},true);
+document.addEventListener('click',e=>{const id=e.target?.closest?.('button')?.id||'';if(!/generate|build|mlrGenerate/i.test(id))return;try{const context=beginNomadDimensionGeneration();if(context)setTimeout(()=>restoreNomadDimensionGeneration(context),140)}catch(error){e.preventDefault();e.stopImmediatePropagation();alert(error.message||error)}},true);
+document.getElementById('customSizeMode')?.addEventListener('change',()=>{for(const delay of[0,80,180,360])setTimeout(()=>{renderParameters();window.__muW57Support?.restoreInspectorSection?.('Size')},delay)});
+window.addEventListener('load',()=>{decorateModeMenu();syncWorkflowUI()});
+setTimeout(()=>{decorateModeMenu();syncWorkflowUI();moveSymmetryIntoRollout()},800);setTimeout(()=>{decorateModeMenu();syncWorkflowUI();moveSymmetryIntoRollout()},1800);stamp();
+})();
