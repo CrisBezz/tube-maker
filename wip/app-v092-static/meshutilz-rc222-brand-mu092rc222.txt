@@ -1,0 +1,2 @@
+// MeshUtilz v0.9.2 RC2.2.2 — verified native Tube-cache release candidate
+(function(){'use strict';const release='v0.9.2 RC2.2.2';document.title='MeshUtilz '+release;document.body?.setAttribute('data-meshutilz-release','rc2-2-2');document.querySelectorAll('.version').forEach(e=>e.textContent=release);const about=document.querySelector('.about-version');if(about)about.textContent='MeshUtilz · Version '+release;window.__muRC222={version:release,baseline:'WIP103',tubeCacheAuthority:'verified native templates with SHA-256 integrity gate'};})();
