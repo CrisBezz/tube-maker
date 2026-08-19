@@ -1,0 +1,2 @@
+// MeshUtilz v0.9.2 RC2.3 — Hair Grooming release candidate
+(function(){'use strict';const v='v0.9.2 RC2.3';document.title='MeshUtilz '+v;document.body?.setAttribute('data-meshutilz-release','rc2-3');document.querySelectorAll('.version').forEach(e=>e.textContent=v);const a=document.querySelector('.about-version');if(a)a.textContent='MeshUtilz · Version '+v;window.__muRC23={version:v,baseline:'WIP108',features:['Hair combing','Clumping','Parting guides','Rooted stray hairs','Groom presets']};})();
