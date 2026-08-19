@@ -1,0 +1,338 @@
+{
+  "build": "MeshUtilz v0.9.2-wip.107",
+  "baseline": "MeshUtilz v0.9.2-wip.106",
+  "generated_utc": "2026-08-19T05:25:35Z",
+  "source_fragments": 65,
+  "runtime": {
+    "path": "meshutilz-v092-wip107/runtime.txt",
+    "bytes": 485291,
+    "sha256": "0e72c348859b5e8b77c9860be2f2eb42c1f38e3b3bade7871046967b9d41eca2"
+  },
+  "sources": [
+    {
+      "path": "wip/app-v086-static/part00.txt",
+      "bytes": 9008,
+      "sha256": "e51d694b9fe3f1e1a011274b9e4023111531c5a455e85d636c856471b3087118"
+    },
+    {
+      "path": "wip/app-v086-static/part01.txt",
+      "bytes": 9355,
+      "sha256": "25e3551dbb34158258ab4e7a3303042674001286868eb1e801fb77ab04995072"
+    },
+    {
+      "path": "wip/app-v086-static/part02.txt",
+      "bytes": 9133,
+      "sha256": "1181be31ed8ace9ed86ac26779eb87d32dfddd80dc745105dbc897fd17b0bd7f"
+    },
+    {
+      "path": "wip/app-v086-static/part03.txt",
+      "bytes": 9172,
+      "sha256": "deb1ee895cdcac41b4bb37491ab943b391926ed216adc6dd2a9c9ffbe2e92886"
+    },
+    {
+      "path": "wip/app-v086-static/part04.txt",
+      "bytes": 9210,
+      "sha256": "b5af9b10cab8483090e315f055eb6ba3fd960b2f5b577bc9f6eff98b57cd156a"
+    },
+    {
+      "path": "wip/app-v086-static/part05.txt",
+      "bytes": 9195,
+      "sha256": "5b0ee1a9570d63a1ed84261c25d22a360e606ef5b5d4a924d682f74ac0bcba6f"
+    },
+    {
+      "path": "wip/app-v086-static/part06.txt",
+      "bytes": 8744,
+      "sha256": "90deeebd5ccc87202f883fc048e2fdc47c891dacb84f806a7db976e449a5b2dc"
+    },
+    {
+      "path": "wip/app-v086-static/part07.txt",
+      "bytes": 9110,
+      "sha256": "28bac0f587dc9e93c5ddb51a484ec6a7781ec12c29b4bc13a0a4025177a7dd8f"
+    },
+    {
+      "path": "wip/app-v086-static/part08.txt",
+      "bytes": 14314,
+      "sha256": "c1be2d0aa2432f786c6c8aa0b78b3f7abf84b9d187378a0455411cc652a2ef7c"
+    },
+    {
+      "path": "wip/app-v086-static/part09.txt",
+      "bytes": 3617,
+      "sha256": "528358726cd3c8916c73d8703dd74b5ae9674a291f9ade1977487ece1fb529f4"
+    },
+    {
+      "path": "wip/app-v086-static/part08b.txt",
+      "bytes": 31802,
+      "sha256": "427ab6cf57d50cfc6f3a82a94bc789ade7d53a1c6e197126f2499da4fe7bd963"
+    },
+    {
+      "path": "wip/app-v087-static/grouped-instances.txt",
+      "bytes": 4694,
+      "sha256": "650030e66a79c120a47e7df324ed999bb0ef307e43765c090a8c31a47b935898"
+    },
+    {
+      "path": "wip/app-v088-static/view-modes.txt",
+      "bytes": 16645,
+      "sha256": "6cd66ed0c47bff3045dce9bbe42f5020a5e3b6adcf1f15c5d70ecda35184a0f1"
+    },
+    {
+      "path": "wip/app-v089-static/instance-density.txt",
+      "bytes": 13294,
+      "sha256": "5131dce27510abd134fc0f305c9e29721313bbe74312dcafe8a8c039ad26ae8f"
+    },
+    {
+      "path": "wip/app-v089-static/density-v2-override.txt",
+      "bytes": 3033,
+      "sha256": "a4ddd00a00f3749b4306fc58eddf2fb880a5cec9448e37207ff1654e116834ec"
+    },
+    {
+      "path": "wip/app-v090-static/compact-ui.txt",
+      "bytes": 5340,
+      "sha256": "ca464f9d4c8d05b7181ccf96df09c6d47296ccd16c47412152b8c35cba046c96"
+    },
+    {
+      "path": "wip/app-v090-static/file-menu.txt",
+      "bytes": 6019,
+      "sha256": "f3121d810350ab762defec24a45cca2f4cb0a25c1d86a8414bc393df18abf073"
+    },
+    {
+      "path": "wip/app-v090-static/panel-cleanup.txt",
+      "bytes": 5494,
+      "sha256": "5b372a8d39dca79774586e88d71b8ec23c9c53516e8532165fe07c5a683703a1"
+    },
+    {
+      "path": "wip/app-v090-static/menu-consistency.txt",
+      "bytes": 5933,
+      "sha256": "16bafd5d0415ee08fb08bea69c429bd75bc9cf6faca5dffd9b38975a3536adcb"
+    },
+    {
+      "path": "wip/app-v090-static/ui-consolidation.txt",
+      "bytes": 7065,
+      "sha256": "9c67c9f80142dd55ae0219c1d82452d2a71f026f923ae1a58705f9f5217104e0"
+    },
+    {
+      "path": "wip/app-v090-static/ui-cleanup-wip6.txt",
+      "bytes": 7082,
+      "sha256": "73c58069b52cfec492de2d21e90b252457db6af5e2c957b20470ee7ee493c35f"
+    },
+    {
+      "path": "wip/app-v090-static/view-menu-fix-wip7.txt",
+      "bytes": 3221,
+      "sha256": "edac3a905bf04f77012ec73cbd3170099d8a400a9cec41473469c8983d7b5717"
+    },
+    {
+      "path": "wip/app-v090-static/wip8-footer-cache-fix.txt",
+      "bytes": 1512,
+      "sha256": "61e12940dd2f36065fc5a9b774773f2c0f6cf3ac51c08a0ceb7dd30f77e6f547"
+    },
+    {
+      "path": "wip/app-v090-static/faceted-view-wip9.txt",
+      "bytes": 4677,
+      "sha256": "f81ae9449369daec67a335cabf68b7bcc6896136f9b60cfa075fbe2d35bb8f1b"
+    },
+    {
+      "path": "wip/app-v090-static/panel-groups-wip10.txt",
+      "bytes": 5634,
+      "sha256": "4140de629db3d00691256b4fc0e822a838e4d400a66808dca1260ae2fc036b58"
+    },
+    {
+      "path": "wip/app-v090-static/panel-refine-wip11.txt",
+      "bytes": 5329,
+      "sha256": "9d92e7d2189a0441354d48a50db42bec90165cedec59f5f4f38a3db4e27ed51e"
+    },
+    {
+      "path": "wip/app-v090-static/panel-nav-wip12.txt",
+      "bytes": 5546,
+      "sha256": "48ba33fcb3595086fb72daf6c92fac6e626b0c08c858f7fd95bdc27c0e942e83"
+    },
+    {
+      "path": "wip/app-v090-static/faceted-inspector-fix-wip13.txt",
+      "bytes": 2208,
+      "sha256": "a75e2d04b9c758932a14e065951aafeb0306a994d64cbd5b2d815ab3059e099a"
+    },
+    {
+      "path": "wip/app-v090-static/mode-sweep-wip14.txt",
+      "bytes": 3892,
+      "sha256": "62bfb252262f5f6c0e42c57aa724d1c62d938ccb73c956b03d66561c10fa6b11"
+    },
+    {
+      "path": "wip/app-v090-static/legacy-sweep-wip15.txt",
+      "bytes": 7101,
+      "sha256": "d37b68f648a4c4a6edaf58e41e67cae6c2bb359062854607d2d5c261f2040b96"
+    },
+    {
+      "path": "wip/app-v090-static/torus-controls-wip16.txt",
+      "bytes": 3323,
+      "sha256": "0105d9dc7c3ec66544db3494a41adcda1196dad5444015e4270f8505f5ed4486"
+    },
+    {
+      "path": "wip/app-v090-static/torus-size-wip17.txt",
+      "bytes": 3094,
+      "sha256": "ba7266f3c3ed83d93c498a9c416b3de9579c64aaf18b45dd4bf38aff72196f34"
+    },
+    {
+      "path": "wip/app-v090-static/torus-size-whitelist-wip18.txt",
+      "bytes": 4085,
+      "sha256": "6cf7cea1a6344593e0a6307f6cf02cc31e3f14d26b4d20fbaf7494d69f93c67c"
+    },
+    {
+      "path": "wip/app-v090-static/stability-wip20.txt",
+      "bytes": 4516,
+      "sha256": "9c34c472059e4cecb226ef0f3b343e40f70470fd2d697123197caacd1efe688f"
+    },
+    {
+      "path": "wip/app-v090-static/imported-inspector-wip21.txt",
+      "bytes": 6889,
+      "sha256": "48298ad78ce03465b556e9f18a3db2dd4ca741dbede9688061e870b57a68f07a"
+    },
+    {
+      "path": "wip/app-v090-static/import-origin-wip22.txt",
+      "bytes": 2800,
+      "sha256": "373911a42904c9335ed243d9b855b09fa81d97f7af222c89e3fd14ae54052f6e"
+    },
+    {
+      "path": "wip/app-v090-static/import-default-y-wip23.txt",
+      "bytes": 730,
+      "sha256": "ebee42a9b53113bd3dd8c267e09d178ae51bbe3e5ee41ce6fdb6b6430b1a015a"
+    },
+    {
+      "path": "wip/app-v090-static/ui-authority-wip24.txt",
+      "bytes": 7842,
+      "sha256": "dae85b9caa06579b3fc6f1db7be210ac0125f2077c5fd6c2ef0fa7c00970f247"
+    },
+    {
+      "path": "wip/app-v090-static/meshutilz-rc1-brand.txt",
+      "bytes": 1491,
+      "sha256": "fd1710845d9a862fcb2624931ace054b621ca60201be1dcb08de192575d73cf6"
+    },
+    {
+      "path": "wip/app-v090-static/orientation-smoothing-mu091wip1.txt",
+      "bytes": 7330,
+      "sha256": "fa7230058fbea156ca0ac4af0b53e5346a6be758373dc1c60b46ec9a6a4a448c"
+    },
+    {
+      "path": "wip/app-v090-static/orientation-authority-mu091wip3.txt",
+      "bytes": 5471,
+      "sha256": "d4617e218fddde468608d0ff01a10cb0487a66d4c51df612cdb42de709f978d2"
+    },
+    {
+      "path": "wip/app-v090-static/source-wireframe-mu091wip4.txt",
+      "bytes": 3709,
+      "sha256": "4a6848b7a7e1044548864c27858b2eeaa535b627f2f8bbf23d2a32fbd9eecab9"
+    },
+    {
+      "path": "wip/app-v090-static/facegroup-boundary-mu091wip5.txt",
+      "bytes": 13865,
+      "sha256": "3d1e7ebf1e6847fc3dff243d47823a7ecd1bd9a17a1a00471791ee099d08b084"
+    },
+    {
+      "path": "wip/app-v090-static/facegroup-boundary-density-tube-mu091wip6.txt",
+      "bytes": 14675,
+      "sha256": "d237367ff552e7e9c89636bb4784260491572daa9a3e907202a94cd840c85f81"
+    },
+    {
+      "path": "wip/app-v092-static/mode-menu-authority-mu092wip4.txt",
+      "bytes": 2662,
+      "sha256": "24c67090eb583a309c4541909f8ea5a171c5bd62a63bbe1bacb5e1df69763ead"
+    },
+    {
+      "path": "wip/app-v092-static/procedural-primitive-workflow-mu092wip59.txt",
+      "bytes": 19248,
+      "sha256": "42adad70f72066ba96053b9bf614259aa7cf2158d7293b9d750084d071af7b03"
+    },
+    {
+      "path": "wip/app-v092-static/internal-primitive-factory-mu092wip59.txt",
+      "bytes": 2503,
+      "sha256": "142dfafda883b0dcb08eb556dd1522bffb45a89fb348076f0eac583af3751777"
+    },
+    {
+      "path": "wip/app-v092-static/workflow-primitive-authority-mu092wip59.txt",
+      "bytes": 22719,
+      "sha256": "09b2b68d29d42912015cbc97ec2683a9ced998bbc13e7778e85f6f4cb92ff35d"
+    },
+    {
+      "path": "wip/app-v092-static/procedural-primitive-export-mu092wip83.txt",
+      "bytes": 19919,
+      "sha256": "cdeebc01b417fcc4a29a5322d2f3a283433e82b21df54655d54d7b6035377aaf"
+    },
+    {
+      "path": "wip/app-v092-static/nomad-tube-network-mu092wip59.txt",
+      "bytes": 15727,
+      "sha256": "5acd983c4e3dd03a8b4067059ba9bef4f6f58b9fd5efd99268491d39b6362cbf"
+    },
+    {
+      "path": "wip/app-v092-static/nomad-hair-fur-mu092wip83.txt",
+      "bytes": 20615,
+      "sha256": "e23e470202be8294f5662d84aae7bcbfd4122ada773fd965bb6bb765de6578d1"
+    },
+    {
+      "path": "wip/app-v092-static/nomad-hair-fur-comb-mu092wip84.txt",
+      "bytes": 11921,
+      "sha256": "c5c12e0bab462a82f89d66aa7a34dde91d95ba6bf49a44e46fc306e59e46a8ad"
+    },
+    {
+      "path": "wip/app-v092-static/nomad-hair-fur-clump-mu092wip85.txt",
+      "bytes": 5285,
+      "sha256": "4e49a961863ac4cda17f3e744935209685b7d9e90a0e0cace7d2b40d7bd66ce5"
+    },
+    {
+      "path": "wip/app-v092-static/orientation-roll-authority-mu092wip83.txt",
+      "bytes": 11925,
+      "sha256": "f5eb1f3f1066a89fa69226fc8b34ced8d578e048e627201c5a3170451a766f9b"
+    },
+    {
+      "path": "wip/app-v092-static/runtime-diagnostic-mu092wip83.txt",
+      "bytes": 1065,
+      "sha256": "0e59d8d577a7b53726f8ab3ab59f37cbf4659b04fd91dd7223c120ecc5738a6d"
+    },
+    {
+      "path": "wip/app-v092-static/meshutilz-wip83-brand-mu092wip83.txt",
+      "bytes": 4889,
+      "sha256": "1a0e43f0a06e143a98570b5df30718e117b7bf377400a4db1796c3c669d29a5a"
+    },
+    {
+      "path": "wip/app-v092-static/meshutilz-rc22-brand-mu092rc22.txt",
+      "bytes": 4506,
+      "sha256": "c00d65f64e954fa965f97d1406d0b9336155df6ecba3d150eeeeaec476571d47"
+    },
+    {
+      "path": "wip/app-v092-static/tube-radial-validation-mu092rc221.txt",
+      "bytes": 2093,
+      "sha256": "677e7065ccdf15f107856a077405f0f80ba54ae60a839ff66e86ed9ae4fa7cda"
+    },
+    {
+      "path": "wip/app-v092-static/verified-tube-cache-presets-mu092wip86.txt",
+      "bytes": 2722,
+      "sha256": "75103d8973b4c3b2ca93343d03d83fb0d2803b7e256c31edbb9f7895c70bd4f7"
+    },
+    {
+      "path": "wip/app-v092-static/tube-cache-consolidation-mu092wip101.txt",
+      "bytes": 556,
+      "sha256": "008bfd67a1c2a5c33b704b124fedc80413e5c8d436528f2836af32959d2914f6"
+    },
+    {
+      "path": "wip/app-v092-static/tube-cache-reference-intake-mu092wip102.txt",
+      "bytes": 3038,
+      "sha256": "20eff86ee9f91bf76b29ae7c7b3ecda8b28d6458daa1267fddfa09b038d053ae"
+    },
+    {
+      "path": "wip/app-v092-static/tube-cache-integrity-mu092wip103.txt",
+      "bytes": 4231,
+      "sha256": "d5fb1828f3ebee9969cc31e116172b4a3215d5fbd841aa3b17df2a1e6ca4c3ae"
+    },
+    {
+      "path": "wip/app-v092-static/meshutilz-rc222-brand-mu092rc222.txt",
+      "bytes": 551,
+      "sha256": "01dae7e152f1135fb0cee31dcd5c8c2172ccd19cbd325d88b3be2d91aa8be448"
+    },
+    {
+      "path": "wip/app-v092-static/nomad-hair-fur-parting-mu092wip106.txt",
+      "bytes": 6137,
+      "sha256": "778f211055f91c0d96cf7eafbc8862ec3b63e6f2d20b53ae55dcc35f933a7a5b"
+    },
+    {
+      "path": "wip/app-v092-static/nomad-hair-fur-strays-mu092wip107.txt",
+      "bytes": 6670,
+      "sha256": "82219ca6bc1de7be7f4a8c2ac66cf8ad31ccf332566443d31c1af6f7f473062a"
+    }
+  ]
+}
