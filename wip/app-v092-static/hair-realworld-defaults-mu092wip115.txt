@@ -1,0 +1,1 @@
+(function(){'use strict';function apply(){for(const [id,value]of[['muzW83Length','0.1'],['muzW83Radius','0.001']]){const e=document.getElementById(id);if(e&&e.dataset.muzW115Default!=='1'){e.value=value;e.dataset.muzW115Default='1';e.dispatchEvent(new Event('input',{bubbles:true}))}}}apply();window.addEventListener('load',apply);setTimeout(apply,900);})();

@@ -1,0 +1,2 @@
+// MeshUtilz v0.9.2-wip.101 — consolidated Tube-cache workbench
+(function(){'use strict';window.__muW101TubeCache={version:'0.9.2-wip.101',scope:['native preset validation','topology comparison','cap derivation','LZ4 round-trip','export gate']};document.title='MeshUtilz v0.9.2-wip.101';document.body?.setAttribute('data-meshutilz-release','wip101');document.querySelectorAll('.version').forEach(e=>e.textContent='v0.9.2-wip.101');const about=document.querySelector('.about-version');if(about)about.textContent='MeshUtilz · Version 0.9.2-wip.101';})();
