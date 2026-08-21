@@ -1,0 +1,28 @@
+$ErrorActionPreference='Stop'
+$repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$parts=@('wip/app-v086-static/part00.txt','wip/app-v086-static/part01.txt','wip/app-v086-static/part02.txt','wip/app-v086-static/part03.txt','wip/app-v086-static/part04.txt','wip/app-v086-static/part05.txt','wip/app-v086-static/part06.txt','wip/app-v086-static/part07.txt','wip/app-v086-static/part08.txt','wip/app-v086-static/part09.txt')
+$modules=@('wip/app-v086-static/part08b.txt','wip/app-v087-static/grouped-instances.txt','wip/app-v088-static/view-modes.txt','wip/app-v089-static/instance-density.txt','wip/app-v089-static/density-v2-override.txt','wip/app-v090-static/compact-ui.txt','wip/app-v090-static/file-menu.txt','wip/app-v090-static/panel-cleanup.txt','wip/app-v090-static/menu-consistency.txt','wip/app-v090-static/ui-consolidation.txt','wip/app-v090-static/ui-cleanup-wip6.txt','wip/app-v090-static/view-menu-fix-wip7.txt','wip/app-v090-static/wip8-footer-cache-fix.txt','wip/app-v090-static/faceted-view-wip9.txt','wip/app-v090-static/panel-groups-wip10.txt','wip/app-v090-static/panel-refine-wip11.txt','wip/app-v090-static/panel-nav-wip12.txt','wip/app-v090-static/faceted-inspector-fix-wip13.txt','wip/app-v090-static/mode-sweep-wip14.txt','wip/app-v090-static/legacy-sweep-wip15.txt','wip/app-v090-static/torus-controls-wip16.txt','wip/app-v090-static/torus-size-wip17.txt','wip/app-v090-static/torus-size-whitelist-wip18.txt','wip/app-v090-static/stability-wip20.txt','wip/app-v090-static/imported-inspector-wip21.txt','wip/app-v090-static/import-origin-wip22.txt','wip/app-v090-static/import-default-y-wip23.txt','wip/app-v090-static/ui-authority-wip24.txt','wip/app-v090-static/meshutilz-rc1-brand.txt','wip/app-v090-static/orientation-smoothing-mu091wip1.txt','wip/app-v090-static/orientation-authority-mu091wip3.txt','wip/app-v090-static/source-wireframe-mu091wip4.txt','wip/app-v090-static/facegroup-boundary-mu091wip5.txt','wip/app-v090-static/facegroup-boundary-density-tube-mu091wip6.txt','wip/app-v092-static/mode-menu-authority-mu092wip4.txt','wip/app-v092-static/procedural-primitive-workflow-mu092wip59.txt','wip/app-v092-static/internal-primitive-factory-mu092wip59.txt','wip/app-v092-static/workflow-primitive-authority-mu092wip59.txt','wip/app-v092-static/procedural-primitive-export-mu092wip83.txt','wip/app-v092-static/nomad-tube-network-mu092wip59.txt','wip/app-v092-static/nomad-hair-fur-mu092wip83.txt','wip/app-v092-static/nomad-hair-fur-comb-mu092wip84.txt','wip/app-v092-static/nomad-hair-fur-clump-mu092wip85.txt','wip/app-v092-static/orientation-roll-authority-mu092wip83.txt','wip/app-v092-static/runtime-diagnostic-mu092wip83.txt','wip/app-v092-static/meshutilz-wip83-brand-mu092wip83.txt')
+$modules+='wip/app-v092-static/meshutilz-rc22-brand-mu092rc22.txt'
+$modules+='wip/app-v092-static/tube-radial-validation-mu092rc221.txt'
+$modules+='wip/app-v092-static/verified-tube-cache-presets-mu092wip86.txt'
+$modules+='wip/app-v092-static/tube-cache-consolidation-mu092wip101.txt'
+$modules+='wip/app-v092-static/tube-cache-reference-intake-mu092wip102.txt'
+$modules+='wip/app-v092-static/tube-cache-integrity-mu092wip103.txt'
+$modules+='wip/app-v092-static/meshutilz-rc222-brand-mu092rc222.txt'
+$modules+='wip/app-v092-static/nomad-hair-fur-parting-mu092wip106.txt'
+$modules+='wip/app-v092-static/meshutilz-rc23-brand-mu092rc23.txt'
+$modules+='wip/app-v092-static/nomad-hair-fur-live-mu092wip110.txt'
+$modules+='wip/app-v092-static/nomad-hair-fur-live-input-guard-mu092wip110.txt'
+$modules+='wip/app-v092-static/nomad-hair-fur-length-mask-mu092wip111.txt'
+$modules+='wip/app-v092-static/nomad-hair-fur-length-mask-apply-mu092wip111.txt'
+$modules+='wip/app-v092-static/nomad-hair-fur-presets-mu092wip108.txt'
+$modules+='wip/app-v092-static/hair-realworld-defaults-mu092wip115.txt'
+$modules+='wip/app-v092-static/nomad-hair-fur-guide-authority-mu092wip121.txt'
+$modules+='wip/app-v092-static/meshutilz-rc24-brand-mu092rc24.txt'
+$utf8=[Text.UTF8Encoding]::new($false)
+function Read-Source([string]$relative){$full=Join-Path $repoRoot $relative;if(!(Test-Path -LiteralPath $full)){throw "Missing runtime source: $relative"};return [IO.File]::ReadAllText($full,$utf8)}
+$app=($parts|ForEach-Object{Read-Source $_})-join'';$marker="fileInput.addEventListener('change', () => {";$at=$app.IndexOf($marker,[StringComparison]::Ordinal);if($at-lt 0){throw 'WIP86 insertion point not found'}
+$injected=($modules|ForEach-Object{Read-Source $_})-join"`n`n";$runtime=$app.Substring(0,$at)+$injected+"`n`n"+$app.Substring($at);$runtimePath=Join-Path $PSScriptRoot 'runtime.txt';[IO.File]::WriteAllText($runtimePath,$runtime,$utf8)
+$sources=@($parts+$modules)|ForEach-Object{$full=Join-Path $repoRoot $_;[ordered]@{path=$_;bytes=(Get-Item -LiteralPath $full).Length;sha256=(Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant()}}
+$manifest=[ordered]@{build='MeshUtilz v0.9.2 RC2.4 Hair Grooming Guides';baseline='MeshUtilz v0.9.2-wip.121';generated_utc=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ');source_fragments=$sources.Count;runtime=[ordered]@{path='meshutilz-v092-rc2-4/runtime.txt';bytes=(Get-Item -LiteralPath $runtimePath).Length;sha256=(Get-FileHash -LiteralPath $runtimePath -Algorithm SHA256).Hash.ToLowerInvariant()};sources=$sources}
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'runtime-manifest.json'),($manifest|ConvertTo-Json -Depth 8),$utf8);Write-Output($manifest.runtime.sha256+' '+$manifest.runtime.bytes+' bytes from '+$manifest.source_fragments+' frozen fragments')
