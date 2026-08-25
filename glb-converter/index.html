@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GLB → glTF</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background:#111315; color:#f3f4f6; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(circle at 20% 10%,#253746,transparent 38%),#111315; }
+    main { width:min(680px,calc(100% - 40px)); padding:44px; border:1px solid #34414b; border-radius:24px; background:rgba(22,27,31,.88); box-shadow:0 24px 80px #0008; }
+    h1 { margin:0 0 10px; font-size:clamp(2rem,7vw,3.5rem); letter-spacing:-.06em; } p { color:#b9c1c8; line-height:1.55; }
+    #drop { margin:30px 0 18px; min-height:190px; display:grid; place-items:center; text-align:center; border:2px dashed #5d7f96; border-radius:18px; background:#172027; cursor:pointer; transition:.18s; }
+    #drop:hover,#drop.drag { border-color:#82d8ff; background:#1c2d38; transform:translateY(-2px); } #drop strong { display:block; font-size:1.15rem; margin-bottom:5px; }
+    button { appearance:none; border:0; border-radius:11px; padding:12px 17px; background:#82d8ff; color:#08202c; font-weight:800; cursor:pointer; font-size:1rem; } button:disabled { opacity:.55; cursor:wait; }
+    #status { min-height:1.5em; margin:18px 0 0; color:#bfeeff; font-weight:600; } .fine { font-size:.88rem; color:#82909a; }
+    input { display:none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>GLB → glTF</h1>
+    <p>Unpack a binary glTF model into a standard glTF package. Materials, texture links, mesh data, animations and scenes are retained.</p>
+    <label id="drop" for="file">
+      <div><strong>Drop a .glb here</strong><span>or tap to choose a file</span></div>
+      <input id="file" type="file" accept=".glb,model/gltf-binary" />
+    </label>
+    <button id="convert" disabled>Convert GLB</button>
+    <button id="save" hidden>Save ZIP</button>
+    <div id="status" aria-live="polite"></div>
+    <p class="fine">Everything happens on this device — the model is never uploaded. The ZIP contains a .gltf file plus its linked .bin data file, including embedded textures.</p>
+  </main>
+  <script>
+    const input = document.querySelector('#file'), drop = document.querySelector('#drop');
+    const button = document.querySelector('#convert'), saveButton = document.querySelector('#save'), status = document.querySelector('#status');
+    let selected, convertedZip, convertedName;
+    const setFile = file => { if (!file) return; selected = file; convertedZip = null; saveButton.hidden = true; button.disabled = false; status.textContent = `${file.name} ready to convert.`; };
+    input.addEventListener('change', () => setFile(input.files[0]));
+    ['dragenter','dragover'].forEach(type => drop.addEventListener(type, e => { e.preventDefault(); drop.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(type => drop.addEventListener(type, e => { e.preventDefault(); drop.classList.remove('drag'); }));
+    drop.addEventListener('drop', e => setFile(e.dataTransfer.files[0]));
+
+    const enc = new TextEncoder();
+    const crcTable = (() => { const t=[]; for(let n=0;n<256;n++){let c=n; for(let k=0;k<8;k++) c=(c&1)?0xedb88320^(c>>>1):c>>>1; t[n]=c>>>0;} return t; })();
+    function crc32(bytes) { let c=0xffffffff; for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8); return (c^0xffffffff)>>>0; }
+    function u16(v){ return new Uint8Array([v&255,(v>>>8)&255]); }
+    function u32(v){ return new Uint8Array([v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255]); }
+    function join(parts){ const size=parts.reduce((n,p)=>n+p.length,0), out=new Uint8Array(size); let i=0; for(const p of parts){out.set(p,i);i+=p.length;} return out; }
+    function zipStore(entries) {
+      let offset=0; const bodies=[], directory=[];
+      for(const entry of entries) { const name=enc.encode(entry.name), data=entry.data, crc=crc32(data); const local=join([u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),name,data]); bodies.push(local);
+        directory.push(join([u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),name])); offset+=local.length; }
+      const dir=join(directory); return join([...bodies,dir,u32(0x06054b50),u16(0),u16(0),u16(entries.length),u16(entries.length),u32(dir.length),u32(offset),u16(0)]);
+    }
+    function parseGlb(buffer) {
+      const view=new DataView(buffer); if(view.byteLength<20||view.getUint32(0,true)!==0x46546c67) throw new Error('That is not a valid GLB file.');
+      if(view.getUint32(4,true)!==2) throw new Error('Only GLB version 2 is supported.');
+      let at=12, json, bin;
+      while(at+8<=view.byteLength){ const length=view.getUint32(at,true), type=view.getUint32(at+4,true); at+=8; if(at+length>view.byteLength) throw new Error('The GLB file is incomplete.'); const chunk=new Uint8Array(buffer,at,length); at+=length; if(type===0x4e4f534a) json=JSON.parse(new TextDecoder().decode(chunk).replace(/\0+$/,'')); if(type===0x004e4942) bin=new Uint8Array(chunk); }
+      if(!json) throw new Error('No glTF JSON chunk was found.'); return {json,bin};
+    }
+    function download(bytes,name){ const url=URL.createObjectURL(new Blob([bytes],{type:'application/zip'})); const a=document.createElement('a'); a.href=url; a.download=name; a.style.display='none'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),30000); }
+    button.addEventListener('click', async () => {
+      try { button.disabled=true; status.textContent='Unpacking model…'; const {json,bin}=parseGlb(await selected.arrayBuffer()); const base=selected.name.replace(/\.glb$/i,'')||'model';
+        if(bin){ json.buffers=json.buffers||[{byteLength:bin.length}]; json.buffers[0].byteLength=bin.length; json.buffers[0].uri=`${base}.bin`; }
+        const gltf=enc.encode(JSON.stringify(json,null,2)); const entries=[{name:`${base}.gltf`,data:gltf}]; if(bin) entries.push({name:`${base}.bin`,data:bin});
+        convertedZip=zipStore(entries); convertedName=`${base}-gltf.zip`; saveButton.hidden=false; status.textContent=`Conversion ready — tap “Save ZIP” to download ${convertedName}.`;
+      } catch(err) { status.textContent=`Couldn’t convert this file: ${err.message}`; console.error(err); } finally { button.disabled=!selected; }
+    });
+    saveButton.addEventListener('click', () => { if (!convertedZip) return; download(convertedZip,convertedName); status.textContent=`Saving ${convertedName}. Check Safari’s Downloads, then Files → Downloads.`; });
+  </script>
+</body>
+</html>
